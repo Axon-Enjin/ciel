@@ -36,7 +36,7 @@
 | Authentication | account access | email, hashed pw, display name | org staff | Supabase (Auth) | possible (host region) → prefer PH/Asia region | until account deletion | consent / contract |
 | Org & project data | core product | org mission, project/ToC content | org staff | Supabase (DB) | as above | per-org policy | contract / legitimate interest |
 | **Field M&E data** | impact tracking | program indicators; **possibly sensitive** (health/livelihood) and **possibly children's** data; phone numbers (hashed) | **beneficiaries** | Supabase (DB), SMS gateway | as above | per-org policy; minimize | **consent of subjects (collected by the org)** + org accountability |
-| AI generation | ToC/grant/signal | prompts + retrieved evidence + **minimized** org context (no raw subject PII) | org staff | **Microsoft Foundry** (Claude/GPT) | model region — set to a data-zone consistent with PH posture | not retained for training (enterprise terms) | legitimate interest |
+| AI generation | ToC/grant/signal | prompts + retrieved evidence + **minimized** org context (no raw subject PII) | org staff | **Microsoft Foundry** (GPT) | model region — set to a data-zone consistent with PH posture | not retained for training (enterprise terms) | legitimate interest |
 | Analytics | product improvement | event data, no PII in properties | org staff | PostHog (self-host option) | self-host avoids transfer | 30 days | legitimate interest |
 | Crash/operational logs | reliability | technical logs | org staff | host/observability | as above | 30 days | legitimate interest |
 
@@ -135,7 +135,7 @@
 | Open-source license compliance — SBOM maintained | Not yet (set up at build) | — |
 | Copyleft scan (GPL/AGPL/LGPL) | Not yet | Yes if any copyleft enters distribution |
 | Third-party assets licensed (fonts: Fraunces, Public Sans, JetBrains Mono — all OFL/libre) | Fonts are libre (OFL/Apache) | No |
-| AI training-data provenance + output ownership/indemnity (Foundry/Anthropic enterprise terms) | Review terms | **Yes** |
+| AI training-data provenance + output ownership/indemnity (Foundry/OpenAI enterprise terms) | Review terms | **Yes** |
 | DMCA/takedown process | Not yet | — |
 | Written IP assignment from each contributor | Not yet | **Yes** |
 

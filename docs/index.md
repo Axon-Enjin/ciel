@@ -2,7 +2,7 @@
 
 **Project slug:** `ciel`
 **Maintained by:** Ciel Team — Create & Conquer 2026
-**Last updated:** 2026-06-25
+**Last updated:** 2026-06-26
 
 > **About Ciel:** An AI-native *Impact Operating System* for the social sector (NGOs, LGUs, community coalitions) — built for **Theme #2** of the Create & Conquer 2026 Hackathon. Ciel turns an identified social need into a rigorous Theory of Change, funded grant proposals, and a live predictive M&E loop — closing the gap from *need identified* to *solution scaled*. Name: **Ciel** (French, "sky"; pronounced *ci-yel*).
 
@@ -41,6 +41,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 | CR ID | Date | Summary | Trigger doc | Docs touched | File |
 |-------|------|---------|-------------|--------------|------|
+| ciel-cr-002 | 2026-06-26 | Runtime model → **GPT-only** on Microsoft Foundry (tenant exposes only GPT; Claude dropped from runtime); critique kept as a separate GPT pass | sdd-ciel.md | index.md, sdd-ciel.md, prd-ciel.md, rfc-ciel-toc-generator.md, rfc-ciel-field-mande.md, clr-ciel.md, build-ciel.md, evidence-ciel.md, gtm-ciel.md | [cr-ciel-002.md](cr-ciel-002.md) |
 | ciel-cr-001 | 2026-06-25 | AI service hosting: Azure Container Apps → Azure App Service (non-containerized); frontend stays on Vercel | sdd-ciel.md | sdd-ciel.md, ops-ciel.md | [cr-ciel-001.md](cr-ciel-001.md) |
 
 ---
@@ -69,5 +70,5 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 - **Scale:** authored at **Full** scale (all 11 FMD docs + INDEX) per team decision, to serve as a hackathon-grade, defensible documentation suite.
 - **Jurisdiction:** Philippines-first. B2G content uses **RA 12009 (NGPA)**; data handling uses **RA 10173 (Data Privacy Act)**.
-- **Stack:** Next.js 16 frontend (`client/`) + Python AI service (FastAPI + LangGraph) + **Microsoft Foundry** (formerly Azure AI Foundry) running Claude as primary model.
+- **Stack:** Next.js 16 frontend (`client/`) + Python AI service (FastAPI + LangGraph) + **Microsoft Foundry** (formerly Azure AI Foundry) running **GPT-only** (GPT frontier for generation + the adversarial critique; GPT-mini for cheap classify/parse). See [cr-ciel-002.md](cr-ciel-002.md).
 - **Brand assets:** see [`/brand`](../brand) — overview board, logo construction, UI application, and logo SVGs. Brand stance is authored in the DSD §0.

@@ -5,7 +5,7 @@ tools: Read, Edit, Bash, Grep, WebFetch
 model: opus
 ---
 
-You own Ciel's LangGraph reasoning pipelines over Microsoft Foundry (Claude primary). Derived from PRD-F1/F2/F3, SDD §8, and RFC-001/002. Read `docs/sdd-ciel.md` §8, the relevant RFC, and `docs/build-ciel.md` §3 before writing code.
+You own Ciel's LangGraph reasoning pipelines over Microsoft Foundry (GPT-only runtime — the Foundry tenant exposes only GPT; see cr-ciel-002). Derived from PRD-F1/F2/F3, SDD §8, and RFC-001/002. Read `docs/sdd-ciel.md` §8, the relevant RFC, and `docs/build-ciel.md` §3 before writing code.
 
 Responsibilities:
 - Implement graph nodes + Pydantic structured-output schemas; wire Foundry IQ retrieval.

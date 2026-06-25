@@ -46,7 +46,7 @@ graph TD
       GRANT[Grant drafting]
       MANDE[M&E signal engine]
     end
-    Foundry[(Microsoft Foundry - Agent Service + Foundry IQ; Claude primary)]
+    Foundry[(Microsoft Foundry - Agent Service + Foundry IQ; GPT-only)]
     DB[(Postgres + pgvector - Supabase)]
     OBJ[(Object Storage - field photos)]
     Web --> RH
@@ -67,7 +67,7 @@ graph TD
 | Client | Next.js 16.2.9, React 19.2, Tailwind v4, PWA (service worker) | Product UI, ToC Studio canvas, offline field capture, streaming AI views |
 | API / Gateway | Next.js Route Handlers + Server Actions; SMS webhook handler | Auth, CRUD, file uploads, SMS ingest, proxy to AI service |
 | Service / Compute | Python 3.12, FastAPI, LangGraph | ToC generation graph, grant drafting, M&E signal computation, RAG orchestration |
-| AI control plane | **Microsoft Foundry** (Foundry Agent Service on Responses API; Foundry IQ managed retrieval) | Model hosting (Claude primary, GPT fallback), agent runtime, RAG over evidence corpus |
+| AI control plane | **Microsoft Foundry** (Foundry Agent Service on Responses API; Foundry IQ managed retrieval) | Model hosting (**GPT-only** — GPT frontier for generation + critique, GPT-mini for cheap parse), agent runtime, RAG over evidence corpus |
 | Data | PostgreSQL + pgvector (Supabase), Object Storage | App data, embeddings, audit log, field media |
 | Infrastructure | Vercel (Next.js) + Azure App Service (Python service, non-containerized — Linux/Python runtime, co-located with Foundry) | Hosting, scaling, secrets |
 
@@ -227,7 +227,7 @@ graph TD
 
 | Service | Purpose | Rate Limits / Fallback |
 |---------|---------|------------------------|
-| Microsoft Foundry (Claude/GPT, Foundry IQ) | Generation + managed RAG | 429 → backoff + queue; degrade to template + cached evidence; never silent-retry past a refusal |
+| Microsoft Foundry (GPT, Foundry IQ) | Generation + managed RAG | 429 → backoff + queue; degrade to template + cached evidence; never silent-retry past a refusal |
 | SMS/USSD gateway (PH provider) | Field ingestion from feature phones | delivery webhook + retry; de-dupe by message id; clarifying reply on parse fail |
 | Supabase (Auth/DB/Storage) | Identity, data, media | connection pool; RLS; daily backups |
 | PostHog (self-host option) | Analytics events (PRD §5.5) | non-blocking; drop on failure |
@@ -287,11 +287,13 @@ graph TD
 
 | Agent / Task | Model | Reason |
 |-------------|-------|--------|
-| ToC interactive generation | Claude Sonnet (via Foundry) | strong grounded reasoning at interactive cost |
-| "Intelligent failure" adversarial critique | Claude Opus (via Foundry) | hardest reasoning; runs once per ToC, rate-limited |
-| Grant section drafting | Claude Sonnet | structured long-form with citations |
-| M&E signal rationale | Claude Sonnet | concise grounded interpretation |
-| Cheap classify/parse (SMS intent) | Claude Haiku or GPT-mini | low-cost, fast |
+| ToC interactive generation | GPT (frontier, via Foundry) | strong grounded reasoning at interactive cost |
+| "Intelligent failure" adversarial critique | GPT (frontier, via Foundry) | separate pass with an adversarial system prompt + lower temperature; runs once per ToC, rate-limited |
+| Grant section drafting | GPT (frontier) | structured long-form with citations |
+| M&E signal rationale | GPT (frontier) | concise grounded interpretation |
+| Cheap classify/parse (SMS intent) | GPT-mini | low-cost, fast |
+
+> **Model note (cr-ciel-002):** Ciel runs **GPT-only** on Microsoft Foundry — the team's Foundry tenant exposes only GPT deployments. The adversarial critique is a separate GPT pass (distinct privileged prompt + lower temperature), not a different model family; the QAD grounding/safety evals are the real gate. Exact deployment names are perishable — pin them at build time per BUILD §3.
 
 **Context architecture:** system prompt (privileged, cached prefix) + injected org/project context + retrieved evidence chunks. Max context ~50k tokens/request. Prompt-prefix caching on the static system instructions (high hit rate expected).
 

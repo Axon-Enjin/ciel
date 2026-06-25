@@ -183,8 +183,8 @@ flowchart TD
 ## 7. AI / Agent Feature Specifications
 
 **AI Component:** Ciel Reasoning Engine (powers PRD-F1, F2, and F3 signal generation).
-**Model(s) considered:** Claude (Opus/Sonnet) via **Microsoft Foundry**; GPT models (also on Foundry); open-weight fallback (Llama via local runner) for cost-sensitive ops.
-**Selected model:** **Claude (Sonnet for interactive generation, Opus for the adversarial "intelligent failure" critique)** via Microsoft Foundry — *reason:* strongest grounded-reasoning + tool-use, available on Foundry alongside GPT, and aligned with the BCG/Anthropic social-impact deployment pattern ([evidence C2, G](evidence-ciel.md)).
+**Model(s) considered:** GPT (frontier/mini) via **Microsoft Foundry**; Claude (Opus/Sonnet) — *not available in our Foundry tenant*; open-weight fallback (Llama via local runner) for cost-sensitive ops.
+**Selected model:** **GPT (frontier for interactive generation and the adversarial "intelligent failure" critique; GPT-mini for cheap classify/parse)** via Microsoft Foundry — *reason:* the team's Foundry tenant exposes only GPT deployments; GPT gives strong grounded reasoning + tool-use on the available control plane. The BCG/Anthropic social-impact pattern ([evidence C2](evidence-ciel.md)) validates the sector, not the runtime model. See [cr-ciel-002.md](cr-ciel-002.md).
 
 **What the AI does:** converts a need into a grounded ToC; critiques it against historical failures; drafts funder-matched proposals; interprets field indicators against ToC assumptions to recommend scale/adapt/stop.
 
@@ -207,7 +207,7 @@ flowchart TD
 ## 8. Dependencies & Assumptions
 
 **Dependencies:**
-- Microsoft Foundry tenant (Agent Service + Foundry IQ) with Claude access.
+- Microsoft Foundry tenant (Agent Service + Foundry IQ) with GPT access.
 - Postgres + pgvector (Supabase or managed) for app data + evidence embeddings.
 - An SMS/USSD gateway with PH coverage (e.g., a Globe/Smart-compatible provider) for field ingestion.
 - A curated development-evidence corpus (academic + sector sources) to ground RAG.
