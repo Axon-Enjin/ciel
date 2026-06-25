@@ -23,7 +23,7 @@ export default async function OnboardingPage() {
       title="Set up your workspace"
       subtitle="Tell us about your organization — you'll use this workspace for all projects and ToCs."
     >
-      <OnboardingForm userId={user.id} email={user.email ?? ""} />
+      <OnboardingForm />
     </AuthShell>
   );
 }
