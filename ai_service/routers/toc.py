@@ -11,11 +11,37 @@ from typing import AsyncIterator
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from ai_service.config import settings
 from ai_service.models.toc import TocAssumption, TocGenerationRequest, TocLockRequest, TocLockResponse
 from ai_service.services.supabase_client import supabase_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _persistence():
+    """Return the persistence backend for ToC reads/writes.
+
+    In production this is always the real Supabase client. In development, if
+    Supabase is unreachable (no local stack / placeholder creds), fall back to a
+    process-local in-memory store so the ToC vertical slice still runs
+    end-to-end (PRD §9 milestone M3 "thin demo path"). The fallback is never
+    used outside ``ENVIRONMENT=development``.
+    """
+    if settings.ENVIRONMENT != "development":
+        return supabase_client
+    try:
+        # Touching `.client` lazily initializes the SDK and validates the key.
+        _ = supabase_client.client
+        return supabase_client
+    except Exception as exc:  # noqa: BLE001 - dev convenience fallback
+        from ai_service.services.demo_store import demo_store
+
+        logger.warning(
+            "Supabase unavailable in development, using in-memory demo store: %s",
+            exc,
+        )
+        return demo_store
 
 
 def _sse(event: str, data: dict) -> str:
@@ -74,10 +100,11 @@ async def _run_pipeline(request: TocGenerationRequest) -> AsyncIterator[str]:
                     },
                 )
 
-    # Persist ToC + critiques
+    # Persist ToC + critiques (real DB, or in-memory demo store in dev)
+    store = _persistence()
     toc_id = str(uuid.uuid4())
     try:
-        inserted = supabase_client.insert_toc(
+        inserted = store.insert_toc(
             {
                 "id": toc_id,
                 "project_id": str(request.project_id),
@@ -91,7 +118,7 @@ async def _run_pipeline(request: TocGenerationRequest) -> AsyncIterator[str]:
 
         critique_ids: list[str] = []
         for critique in final_state.get("critiques", []):
-            row = supabase_client.insert_toc_critique(
+            row = store.insert_toc_critique(
                 {
                     "toc_id": toc_id,
                     "prompt": critique.get("prompt", ""),
@@ -120,9 +147,13 @@ async def _run_pipeline(request: TocGenerationRequest) -> AsyncIterator[str]:
 @router.post("/generate")
 async def generate_toc(request: TocGenerationRequest):
     """Stream ToC generation as Server-Sent Events."""
-    project = supabase_client.get_project(str(request.project_id))
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    store = _persistence()
+    # The demo store has no projects table; skip the existence check when the
+    # in-memory dev fallback is active (the client already authorized the user).
+    if store is supabase_client:
+        project = supabase_client.get_project(str(request.project_id))
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
 
     return StreamingResponse(
         _run_pipeline(request),
@@ -141,22 +172,24 @@ async def lock_toc(toc_id: str, request: TocLockRequest):
     if str(request.toc_id) != toc_id:
         raise HTTPException(status_code=400, detail="toc_id mismatch")
 
-    toc = supabase_client.get_toc(toc_id)
+    store = _persistence()
+
+    toc = store.get_toc(toc_id)
     if not toc:
         raise HTTPException(status_code=404, detail="ToC not found")
     if toc.get("status") == "locked":
         raise HTTPException(status_code=409, detail="ToC already locked")
 
-    critiques = supabase_client.get_toc_critiques(toc_id)
+    critiques = store.get_toc_critiques(toc_id)
     if not critiques:
         raise HTTPException(status_code=409, detail="No failure prompts to acknowledge")
 
     ack_set = {str(i) for i in request.acknowledged_critique_ids}
     for critique in critiques:
         if str(critique["id"]) in ack_set:
-            supabase_client.acknowledge_critique_simple(str(critique["id"]))
+            store.acknowledge_critique_simple(str(critique["id"]))
 
-    refreshed = supabase_client.get_toc_critiques(toc_id)
+    refreshed = store.get_toc_critiques(toc_id)
     if any(not c.get("acknowledged") for c in refreshed):
         raise HTTPException(
             status_code=409,
@@ -193,9 +226,9 @@ async def lock_toc(toc_id: str, request: TocLockRequest):
             indicator=row["indicator"],
             threshold=float(row["threshold"]) if row.get("threshold") is not None else None,
         )
-        for row in supabase_client.insert_toc_assumptions(assumptions_payload)
+        for row in store.insert_toc_assumptions(assumptions_payload)
     ]
-    supabase_client.update_toc(
+    store.update_toc(
         toc_id,
         {"status": "locked", "failure_prompts_ack": True},
     )

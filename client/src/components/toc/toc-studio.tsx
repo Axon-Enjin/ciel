@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 type FailurePrompt = {
@@ -131,8 +131,12 @@ export function TocStudio({
     }
   }, [projectId, orgId, need, phase]);
 
+  const hasAutoStarted = useRef(false);
+
   useEffect(() => {
-    if (autoGenerate) {
+    if (autoGenerate && !hasAutoStarted.current) {
+      hasAutoStarted.current = true;
+      // Intentional fetch-on-mount: kick off generation exactly once.
       runGeneration();
     }
   }, [autoGenerate, runGeneration]);

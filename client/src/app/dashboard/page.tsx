@@ -11,6 +11,12 @@ export const metadata = {
   description: "Your Ciel dashboard",
 };
 
+type DashboardMembership = {
+  org_id: string;
+  role: string;
+  organizations: { name: string; org_type: string };
+};
+
 export default async function DashboardPage() {
   const user = await getCurrentUser();
 
@@ -43,7 +49,7 @@ export default async function DashboardPage() {
             Your Organizations
           </h2>
           <div className="space-y-4">
-            {organizations.map((membership: any) => (
+            {(organizations as unknown as DashboardMembership[]).map((membership) => (
               <div
                 key={membership.org_id}
                 className="flex items-center justify-between rounded-lg border border-[var(--color-border)] p-4"
@@ -57,10 +63,10 @@ export default async function DashboardPage() {
                   </p>
                 </div>
                 <a
-                  href={`/org/${membership.org_id}/projects`}
+                  href={`/projects/new?org=${membership.org_id}`}
                   className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary)]/90"
                 >
-                  View Projects
+                  New Project
                 </a>
               </div>
             ))}
@@ -89,29 +95,29 @@ export default async function DashboardPage() {
             </p>
           </a>
 
-          <a
-            href="/field"
-            className="rounded-lg border border-[var(--color-border)] bg-white p-6 hover:border-[var(--color-primary)] transition-colors"
+          <div
+            aria-disabled="true"
+            className="rounded-lg border border-dashed border-[var(--color-border)] bg-white p-6 opacity-60"
           >
             <h3 className="font-display font-semibold text-[var(--color-text)]">
               Field Capture
             </h3>
             <p className="mt-2 text-sm text-[var(--color-text)]/70">
-              Record field data
+              Record field data — coming in the next slice
             </p>
-          </a>
+          </div>
 
-          <a
-            href="/reports"
-            className="rounded-lg border border-[var(--color-border)] bg-white p-6 hover:border-[var(--color-primary)] transition-colors"
+          <div
+            aria-disabled="true"
+            className="rounded-lg border border-dashed border-[var(--color-border)] bg-white p-6 opacity-60"
           >
             <h3 className="font-display font-semibold text-[var(--color-text)]">
               Reports
             </h3>
             <p className="mt-2 text-sm text-[var(--color-text)]/70">
-              View impact reports
+              View impact reports — coming in the next slice
             </p>
-          </a>
+          </div>
         </div>
       </div>
     </main>

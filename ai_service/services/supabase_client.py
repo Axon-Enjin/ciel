@@ -33,7 +33,18 @@ class SupabaseClient:
         return cls._instance
     
     def __init__(self):
-        """Initialize Supabase client if not already initialized."""
+        """Defer client creation until first use.
+
+        Building the client is delayed so that importing this module (and the
+        FastAPI app) does not require valid Supabase credentials. This keeps the
+        service importable for unit tests and local boot, while real DB calls
+        still initialize a connection lazily on first access.
+        """
+        # Intentionally no eager `create_client` here — see `client` property.
+
+    @property
+    def client(self) -> Client:
+        """Get the underlying Supabase client, creating it on first access."""
         if self._client is None:
             try:
                 self._client = create_client(
@@ -44,12 +55,6 @@ class SupabaseClient:
             except Exception as e:
                 logger.error(f"Failed to initialize Supabase client: {e}")
                 raise
-    
-    @property
-    def client(self) -> Client:
-        """Get the underlying Supabase client."""
-        if self._client is None:
-            raise RuntimeError("Supabase client not initialized")
         return self._client
     
     async def health_check(self) -> bool:
