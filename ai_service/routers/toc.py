@@ -50,6 +50,7 @@ def _sse(event: str, data: dict) -> str:
 
 async def _run_pipeline(request: TocGenerationRequest) -> AsyncIterator[str]:
     from ai_service.graph.nodes import (
+        NODE_TYPE_ORDER,
         critique_node,
         draft_node,
         interrogate_node,
@@ -76,19 +77,38 @@ async def _run_pipeline(request: TocGenerationRequest) -> AsyncIterator[str]:
         yield _sse("node_started", {"node": node_name})
         final_state = await node_func(final_state)  # type: ignore[arg-type]
 
+        if node_name == "interrogate":
+            for idx, question in enumerate(final_state.get("interrogation_questions", [])):
+                yield _sse(
+                    "interrogation_question",
+                    {"index": idx, "text": question},
+                )
+
         if node_name == "draft" and final_state.get("draft_graph"):
             graph = final_state["draft_graph"]
-            for idx, outcome in enumerate(
-                [n for n in graph.get("nodes", []) if n.get("type") == "outcome"]
-            ):
-                yield _sse(
-                    "toc_delta",
-                    {
-                        "path": f"outcomes[{idx}]",
-                        "text": outcome.get("text", ""),
-                        "source_ids": outcome.get("source_ids", []),
-                    },
-                )
+            nodes = graph.get("nodes", [])
+            type_counters: dict[str, int] = {}
+            for node_type in NODE_TYPE_ORDER:
+                for node in [n for n in nodes if n.get("type") == node_type]:
+                    idx = type_counters.get(node_type, 0)
+                    type_counters[node_type] = idx + 1
+                    yield _sse(
+                        "toc_delta",
+                        {
+                            "path": f"nodes[{node.get('id', f'{node_type}-{idx}')}]",
+                            "id": node.get("id", ""),
+                            "type": node.get("type", ""),
+                            "text": node.get("text", ""),
+                            "source_ids": node.get("source_ids", []),
+                        },
+                    )
+            yield _sse(
+                "graph_complete",
+                {
+                    "nodes": nodes,
+                    "edges": graph.get("edges", []),
+                },
+            )
 
         if node_name == "critique":
             for critique in final_state.get("critiques", []):

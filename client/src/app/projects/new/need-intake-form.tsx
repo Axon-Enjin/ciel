@@ -30,7 +30,10 @@ export function NeedIntakeForm({ orgId }: { orgId: string }) {
       }
 
       const projectId = data.project.id as string;
-      router.push(`/projects/${projectId}/toc?generate=1`);
+      const params = new URLSearchParams({ generate: "1" });
+      if (region.trim()) params.set("region", region.trim());
+      if (population.trim()) params.set("population", population.trim());
+      router.push(`/projects/${projectId}/toc?${params.toString()}`);
     } catch {
       setError("Network error. Please try again.");
     } finally {

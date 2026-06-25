@@ -2,19 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-
-type FailurePrompt = {
-  id?: string;
-  prompt: string;
-  source_ids: string[];
-  acknowledged?: boolean;
-};
-
-type StreamOutcome = {
-  path: string;
-  text: string;
-  source_ids: string[];
-};
+import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
+import { TocGraphCanvas } from "./toc-graph-canvas";
+import { TocNodeDetailPanel } from "./toc-node-detail-panel";
+import type {
+  FailurePrompt,
+  TocAssumption,
+  TocGraph,
+  TocNode,
+} from "./types";
 
 const NODE_LABELS: Record<string, string> = {
   interrogate: "Root-cause interrogation",
@@ -23,35 +20,80 @@ const NODE_LABELS: Record<string, string> = {
   critique: "Intelligent failure critique",
 };
 
+function mergeDelta(graph: TocGraph, delta: TocNode & { path: string }): TocGraph {
+  const idx = graph.nodes.findIndex((n) => n.id === delta.id);
+  const node: TocNode = {
+    id: delta.id,
+    type: delta.type,
+    text: delta.text,
+    source_ids: delta.source_ids ?? [],
+  };
+  const nodes =
+    idx >= 0
+      ? graph.nodes.map((n, i) => (i === idx ? node : n))
+      : [...graph.nodes, node];
+  return { ...graph, nodes };
+}
+
+export type TocStudioProps = {
+  projectId: string;
+  orgId: string;
+  need: string;
+  context?: Record<string, string>;
+  autoGenerate?: boolean;
+  initialGraph?: TocGraph | null;
+  initialCritiques?: FailurePrompt[];
+  initialStatus?: "draft" | "locked" | null;
+  initialTocId?: string | null;
+};
+
 export function TocStudio({
   projectId,
   orgId,
   need,
+  context = {},
   autoGenerate,
-}: {
-  projectId: string;
-  orgId: string;
-  need: string;
-  autoGenerate?: boolean;
-}) {
-  const [phase, setPhase] = useState<"idle" | "generating" | "ready" | "locking" | "locked" | "error">(
-    autoGenerate ? "generating" : "idle",
-  );
+  initialGraph,
+  initialCritiques = [],
+  initialStatus,
+  initialTocId,
+}: TocStudioProps) {
+  const isLocked = initialStatus === "locked";
+  const hasDraft = Boolean(initialGraph?.nodes.length) && !isLocked;
+
+  const [phase, setPhase] = useState<
+    "idle" | "generating" | "ready" | "locking" | "locked" | "error"
+  >(() => {
+    if (isLocked) return "locked";
+    if (hasDraft) return "ready";
+    return autoGenerate ? "generating" : "idle";
+  });
+
   const [activeNode, setActiveNode] = useState<string | null>(null);
-  const [outcomes, setOutcomes] = useState<StreamOutcome[]>([]);
-  const [prompts, setPrompts] = useState<FailurePrompt[]>([]);
-  const [tocId, setTocId] = useState<string | null>(null);
-  const [critiqueIds, setCritiqueIds] = useState<string[]>([]);
+  const [graph, setGraph] = useState<TocGraph>(
+    initialGraph ?? { nodes: [], edges: [] },
+  );
+  const [questions, setQuestions] = useState<string[]>([]);
+  const [prompts, setPrompts] = useState<FailurePrompt[]>(initialCritiques);
+  const [tocId, setTocId] = useState<string | null>(initialTocId ?? null);
+  const [critiqueIds, setCritiqueIds] = useState<string[]>(
+    initialCritiques.map((c, i) => c.id ?? `idx-${i}`),
+  );
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
+  const [assumptions, setAssumptions] = useState<TocAssumption[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lockError, setLockError] = useState<string | null>(null);
 
   const runGeneration = useCallback(async () => {
     setPhase("generating");
     setError(null);
-    setOutcomes([]);
+    setGraph({ nodes: [], edges: [] });
+    setQuestions([]);
     setPrompts([]);
     setActiveNode(null);
+    setAcknowledged(new Set());
+    setAssumptions([]);
 
     try {
       const res = await fetch("/api/toc/generate", {
@@ -61,7 +103,7 @@ export function TocStudio({
           project_id: projectId,
           org_id: orgId,
           need,
-          context: {},
+          context,
         }),
       });
 
@@ -97,15 +139,28 @@ export function TocStudio({
           if (event === "node_started") {
             setActiveNode(payload.node);
           }
+          if (event === "interrogation_question") {
+            setQuestions((prev) => {
+              const next = [...prev];
+              next[payload.index] = payload.text;
+              return next;
+            });
+          }
           if (event === "toc_delta") {
-            setOutcomes((prev) => {
-              const idx = prev.findIndex((o) => o.path === payload.path);
-              if (idx >= 0) {
-                const next = [...prev];
-                next[idx] = payload;
-                return next;
-              }
-              return [...prev, payload];
+            setGraph((prev) =>
+              mergeDelta(prev, {
+                path: payload.path,
+                id: payload.id,
+                type: payload.type,
+                text: payload.text,
+                source_ids: payload.source_ids ?? [],
+              }),
+            );
+          }
+          if (event === "graph_complete") {
+            setGraph({
+              nodes: payload.nodes ?? [],
+              edges: payload.edges ?? [],
             });
           }
           if (event === "failure_prompt") {
@@ -122,24 +177,21 @@ export function TocStudio({
         }
       }
 
-      if (phase === "generating") {
-        setPhase("ready");
-      }
+      setPhase((p) => (p === "generating" ? "ready" : p));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
       setPhase("error");
     }
-  }, [projectId, orgId, need, phase]);
+  }, [projectId, orgId, need, context]);
 
   const hasAutoStarted = useRef(false);
 
   useEffect(() => {
-    if (autoGenerate && !hasAutoStarted.current) {
+    if (autoGenerate && !hasAutoStarted.current && !hasDraft && !isLocked) {
       hasAutoStarted.current = true;
-      // Intentional fetch-on-mount: kick off generation exactly once.
       runGeneration();
     }
-  }, [autoGenerate, runGeneration]);
+  }, [autoGenerate, hasDraft, isLocked, runGeneration]);
 
   const toggleAck = (id: string) => {
     setAcknowledged((prev) => {
@@ -150,29 +202,30 @@ export function TocStudio({
     });
   };
 
+  const allAcknowledged =
+    critiqueIds.length > 0 &&
+    critiqueIds.every((id) => acknowledged.has(id));
+
   const handleLock = async () => {
-    if (!tocId) return;
+    if (!tocId || !allAcknowledged) return;
     setLockError(null);
     setPhase("locking");
-
-    const idsToAck =
-      critiqueIds.length > 0
-        ? critiqueIds
-        : prompts.map((_, i) => `placeholder-${i}`);
-
-    const ackList =
-      acknowledged.size > 0 ? Array.from(acknowledged) : idsToAck;
 
     try {
       const res = await fetch(`/api/toc/${tocId}/lock`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acknowledged_critique_ids: ackList }),
+        body: JSON.stringify({
+          acknowledged_critique_ids: Array.from(acknowledged),
+        }),
       });
 
       const data = await res.json();
       if (res.status === 409) {
-        setLockError(data.detail ?? "Acknowledge all failure prompts before locking.");
+        setLockError(
+          data.detail ??
+            "Acknowledge all failure prompts before locking.",
+        );
         setPhase("ready");
         return;
       }
@@ -182,6 +235,7 @@ export function TocStudio({
         return;
       }
 
+      setAssumptions(data.assumptions ?? []);
       setPhase("locked");
     } catch {
       setLockError("Network error while locking.");
@@ -189,164 +243,243 @@ export function TocStudio({
     }
   };
 
+  const showGeneratingPanel = phase === "generating";
+  const readOnlyGraph = phase === "locked" || isLocked;
+
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--color-text-muted)]">
             ToC Studio
           </p>
-          <h1 className="mt-1 text-display text-2xl text-[var(--color-text)]">
+          <h1 className="mt-2 font-display text-[32px] font-semibold leading-tight text-[var(--color-text)]">
             Theory of Change
           </h1>
         </div>
-        <div className="flex gap-2">
-          {phase !== "generating" && phase !== "locked" && (
-            <button
-              type="button"
-              onClick={runGeneration}
-              className="rounded-lg border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-medium hover:border-[var(--color-primary)]"
-            >
-              {phase === "idle" ? "Generate ToC" : "Regenerate"}
-            </button>
-          )}
+        <div className="flex flex-wrap gap-2">
+          {!readOnlyGraph &&
+            phase !== "generating" &&
+            phase !== "locking" && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={runGeneration}
+              >
+                {phase === "idle" ? "Generate ToC" : "Regenerate"}
+              </Button>
+            )}
           {phase === "ready" && tocId && (
-            <button
+            <Button
               type="button"
               onClick={handleLock}
-              disabled={prompts.length > 0 && acknowledged.size < critiqueIds.length}
-              className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={!allAcknowledged}
             >
               Lock ToC
-            </button>
+            </Button>
           )}
         </div>
-      </div>
+      </header>
 
-      {phase === "generating" && (
-        <div className="rounded-[var(--radius-surface)] border border-[var(--color-border)] bg-white p-6">
-          <p className="text-sm font-medium text-[var(--color-text)]">Generating…</p>
-          <ul className="mt-4 space-y-2">
+      {showGeneratingPanel && (
+        <Surface className="p-6" elevation="sm">
+          <p className="text-sm font-medium text-[var(--color-text)]">
+            Generating…
+          </p>
+          <ul className="mt-4 space-y-2" aria-live="polite">
             {Object.entries(NODE_LABELS).map(([key, label]) => (
               <li
                 key={key}
                 className={`flex items-center gap-2 text-sm ${
                   activeNode === key
-                    ? "text-[var(--color-primary)] font-medium"
+                    ? "font-medium text-[var(--color-primary)]"
                     : "text-[var(--color-text-muted)]"
                 }`}
               >
                 <span
                   className={`h-2 w-2 rounded-full ${
-                    activeNode === key ? "bg-[var(--color-accent)] animate-pulse" : "bg-[var(--color-border)]"
+                    activeNode === key
+                      ? "bg-[var(--color-accent)]"
+                      : "bg-[var(--color-border)]"
                   }`}
                 />
                 {label}
               </li>
             ))}
           </ul>
-        </div>
+        </Surface>
       )}
 
       {error && (
-        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800">{error}</div>
+        <Surface
+          className="border-[color-mix(in_srgb,var(--color-error)_35%,var(--color-border))] p-4"
+          elevation="none"
+        >
+          <p className="text-sm text-[var(--color-error)]">{error}</p>
+        </Surface>
       )}
       {lockError && (
-        <div className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">{lockError}</div>
+        <Surface
+          className="border-[color-mix(in_srgb,var(--color-warning)_40%,var(--color-border))] p-4"
+          elevation="none"
+        >
+          <p className="text-sm text-[var(--color-text)]">{lockError}</p>
+        </Surface>
       )}
 
-      {outcomes.length > 0 && (
-        <section className="rounded-[var(--radius-surface)] border border-[var(--color-border)] bg-white p-6">
-          <h2 className="font-display text-lg font-semibold text-[var(--color-text)]">
-            Outcomes (streamed)
-          </h2>
-          <ul className="mt-4 space-y-4">
-            {outcomes.map((o) => (
-              <li key={o.path} className="border-l-2 border-[var(--color-primary)] pl-4">
-                <p className="text-[var(--color-text)]">{o.text}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {o.source_ids.length > 0 ? (
-                    o.source_ids.map((sid) => (
-                      <span
-                        key={sid}
-                        className="rounded-full bg-[var(--color-bg)] px-2 py-0.5 text-xs font-mono text-[var(--color-data)]"
-                      >
-                        source:{sid.slice(0, 8)}…
-                      </span>
-                    ))
-                  ) : (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
-                      unverified — needs human input
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {prompts.length > 0 && phase !== "locked" && (
-        <section className="rounded-[var(--radius-surface)] border border-[var(--color-warning)]/40 bg-amber-50/50 p-6">
-          <h2 className="font-display text-lg font-semibold text-[var(--color-text)]">
-            Intelligent failure prompts
-          </h2>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Acknowledge each prompt before you can lock this ToC.
+      {questions.length > 0 && (
+        <Surface as="section" className="p-6" elevation="sm">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--color-text-muted)]">
+            Root-cause questions
           </p>
-          <ul className="mt-4 space-y-4">
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            Worth reflecting on before you commit — no need to answer here.
+          </p>
+          <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm text-[var(--color-text)]">
+            {questions.filter(Boolean).map((q, i) => (
+              <li key={i}>{q}</li>
+            ))}
+          </ol>
+        </Surface>
+      )}
+
+      <section aria-labelledby="toc-graph-heading">
+        <h2 id="toc-graph-heading" className="sr-only">
+          Theory of Change graph
+        </h2>
+        {graph.nodes.length > 0 && !selectedNodeId && (
+          <p className="mb-3 text-sm text-[var(--color-text-muted)]">
+            Select a node to read its full statement.
+          </p>
+        )}
+        <TocGraphCanvas
+          graph={graph}
+          streaming={phase === "generating"}
+          readOnly={readOnlyGraph}
+          selectedId={selectedNodeId}
+          onSelectNode={setSelectedNodeId}
+        />
+        <TocNodeDetailPanel
+          node={
+            selectedNodeId
+              ? graph.nodes.find((n) => n.id === selectedNodeId) ?? null
+              : null
+          }
+          onClose={() => setSelectedNodeId(null)}
+        />
+      </section>
+
+      {prompts.length > 0 && phase !== "locked" && !isLocked && (
+        <Surface
+          as="section"
+          className="border-[color-mix(in_srgb,var(--color-warning)_40%,transparent)] p-6"
+          elevation="sm"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--color-text-muted)]">
+            Intelligent failure prompts
+          </p>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            Here&apos;s what didn&apos;t work last time — worth a look before
+            you commit.
+          </p>
+          <fieldset className="mt-4 space-y-4">
+            <legend className="sr-only">
+              Acknowledge failure prompts before locking
+            </legend>
             {prompts.map((p, i) => {
-              const id = critiqueIds[i] ?? `idx-${i}`;
+              const id = critiqueIds[i] ?? p.id ?? `idx-${i}`;
+              const inputId = `critique-ack-${id}`;
               return (
-                <li
-                  key={id}
-                  className="rounded-lg border border-[var(--color-border)] bg-white p-4"
-                >
-                  <p className="text-sm text-[var(--color-text)]">{p.prompt}</p>
-                  <label className="mt-3 flex items-center gap-2 text-sm">
+                <Surface key={id} className="p-4" elevation="none">
+                  <p className="text-sm text-[var(--color-text)]">
+                    {p.prompt}
+                  </p>
+                  <label
+                    htmlFor={inputId}
+                    className="mt-3 flex min-h-[44px] cursor-pointer items-center gap-3 text-sm text-[var(--color-text)]"
+                  >
                     <input
+                      id={inputId}
                       type="checkbox"
                       checked={acknowledged.has(id)}
                       onChange={() => toggleAck(id)}
-                      className="rounded border-[var(--color-border)]"
+                      className="h-4 w-4 rounded border-[var(--color-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
                     />
                     I understand this risk
                   </label>
-                </li>
+                </Surface>
               );
             })}
-          </ul>
-        </section>
+          </fieldset>
+        </Surface>
       )}
 
-      {phase === "locked" && (
-        <div className="rounded-[var(--radius-surface)] border border-[var(--color-success)]/30 bg-green-50 p-6">
-          <p className="font-medium text-[var(--color-success)]">ToC locked</p>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Assumptions extracted for M&amp;E monitoring. You can proceed to grant drafting or field capture.
+      {(phase === "locked" || isLocked) && (
+        <Surface
+          className="border-[color-mix(in_srgb,var(--color-success)_30%,var(--color-border))] p-6"
+          elevation="sm"
+        >
+          <p className="font-semibold text-[var(--color-success)]">
+            ToC locked
           </p>
-          <div className="mt-4 flex flex-wrap items-center gap-4">
-            <Link
-              href={`/projects/${projectId}/grants`}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary-hover)]"
-            >
-              Draft a grant proposal →
-            </Link>
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium text-[var(--color-primary)] hover:underline"
-            >
-              Back to dashboard
-            </Link>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            Assumptions extracted for M&amp;E monitoring. You can proceed to
+            grant drafting or return to the dashboard.
+          </p>
+          {assumptions.length > 0 && (
+            <ul className="mt-4 space-y-2 border-t border-[var(--color-border)] pt-4">
+              {assumptions.map((a, i) => (
+                <li
+                  key={a.id ?? i}
+                  className="text-sm text-[var(--color-text)]"
+                >
+                  <span className="font-medium">{a.statement}</span>
+                  {a.indicator && (
+                    <span className="ml-2 text-[var(--color-text-muted)]">
+                      ({a.indicator}
+                      {a.threshold != null ? ` ≥ ${a.threshold}` : ""})
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <Button asChild>
+              <Link href={`/projects/${projectId}/grants`}>
+                Draft a grant proposal
+              </Link>
+            </Button>
+            <Button variant="ghost" asChild>
+              <Link href="/dashboard">Back to dashboard</Link>
+            </Button>
           </div>
-        </div>
+        </Surface>
       )}
 
-      <details className="rounded-lg border border-[var(--color-border)] bg-white p-4 text-sm">
+      <details className="rounded-surface border border-[var(--color-border)] bg-surface p-4 text-sm">
         <summary className="cursor-pointer font-medium text-[var(--color-text-muted)]">
           Need statement
         </summary>
         <p className="mt-2 text-[var(--color-text)]">{need}</p>
+        {(context.region || context.population) && (
+          <dl className="mt-3 grid gap-2 text-[var(--color-text-muted)] sm:grid-cols-2">
+            {context.region && (
+              <>
+                <dt className="text-xs uppercase tracking-wide">Region</dt>
+                <dd className="text-[var(--color-text)]">{context.region}</dd>
+              </>
+            )}
+            {context.population && (
+              <>
+                <dt className="text-xs uppercase tracking-wide">Population</dt>
+                <dd className="text-[var(--color-text)]">
+                  {context.population}
+                </dd>
+              </>
+            )}
+          </dl>
+        )}
       </details>
     </div>
   );

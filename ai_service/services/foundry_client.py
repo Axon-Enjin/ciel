@@ -153,6 +153,41 @@ Generate a Theory of Change following the system instructions. Ground all claims
             logger.error(f"ToC generation failed: {e}")
             raise
 
+    async def generate_interrogation(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.5,
+    ) -> str:
+        """Generate root-cause clarifying questions as JSON."""
+        messages: List[Dict[str, str]] = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": f"""# Need and context
+
+{user_prompt}
+
+Return 2-3 clarifying questions as JSON.""",
+            },
+        ]
+        kwargs = self._completion_kwargs(
+            max_tokens=2000,
+            temperature=temperature,
+            reasoning_effort=settings.FOUNDRY_REASONING_EFFORT_GENERATION,
+        )
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                response_format={"type": "json_object"},
+                **kwargs,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            logger.error(f"Interrogation generation failed: {e}")
+            raise
+
     async def _stream_response(
         self,
         messages: List[Dict[str, str]],

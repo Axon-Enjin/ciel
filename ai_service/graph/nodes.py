@@ -13,6 +13,12 @@ from ai_service.models.toc import TocGraph, TocNode, TocEdge
 
 logger = logging.getLogger(__name__)
 
+NODE_TYPE_ORDER = ("problem", "input", "activity", "output", "outcome", "impact")
+
+INTERROGATE_SYSTEM_PROMPT = """You are Ciel's root-cause analyst for social sector programs.
+Return ONLY valid JSON: {"questions": ["...", "..."]}
+Ask 2-3 plain, kind clarifying questions about root causes — no jargon, no "AI" framing."""
+
 TOC_SYSTEM_PROMPT = """You are Ciel's Theory of Change generator for the social sector.
 Return ONLY valid JSON with this shape:
 {
@@ -116,8 +122,53 @@ def _extract_assumptions(graph: dict[str, Any]) -> list[dict[str, Any]]:
     return assumptions
 
 
+def _template_interrogation(need: str, context: dict[str, Any]) -> list[str]:
+    """Deterministic root-cause questions when AI is unavailable."""
+    region = context.get("region") or "this context"
+    population = context.get("population") or "the target population"
+    snippet = need[:120].rstrip()
+    if len(need) > 120:
+        snippet += "…"
+    return [
+        f"What upstream factors most often prevent {population} from resolving: “{snippet}”?",
+        f"In {region}, which local constraints (access, cost, trust) have blocked similar efforts before?",
+        "Who on the frontline would notice early if this approach is not working — and how would they tell you?",
+    ]
+
+
 async def interrogate_node(state: TocState) -> TocState:
     state["current_node"] = "interrogate"
+    need = state.get("need", "")
+    context = state.get("context", {})
+    questions: list[str] = []
+    tokens = 0
+
+    if settings.ai_ready:
+        try:
+            from ai_service.services.foundry_client import foundry_client
+
+            user_prompt = json.dumps({"need": need, "context": context})
+            raw = await foundry_client.generate_interrogation(
+                system_prompt=INTERROGATE_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+            )
+            if isinstance(raw, str):
+                text = raw.strip()
+                if text.startswith("```"):
+                    text = text.split("```")[1]
+                    if text.startswith("json"):
+                        text = text[4:]
+                parsed = json.loads(text)
+                questions = [str(q) for q in parsed.get("questions", []) if q][:3]
+                tokens = 1500
+        except Exception as exc:
+            logger.warning("Interrogation generation failed, using template: %s", exc)
+
+    if not questions:
+        questions = _template_interrogation(need, context)
+
+    state["interrogation_questions"] = questions
+    state["tokens_used"] = state.get("tokens_used", 0) + tokens
     return state
 
 

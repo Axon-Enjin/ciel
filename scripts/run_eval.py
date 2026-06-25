@@ -29,7 +29,12 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.suite == "core":
-        code = run_pytest(["ai_service/tests/test_h01_grounding.py", "ai_service/tests/test_h02_lock_gate.py"])
+        code = run_pytest([
+            "ai_service/tests/test_h01_grounding.py",
+            "ai_service/tests/test_h01_interrogate.py",
+            "ai_service/tests/test_h01_graph_sse.py",
+            "ai_service/tests/test_h02_lock_gate.py",
+        ])
     else:
         code = 1
 

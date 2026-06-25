@@ -12,6 +12,7 @@ class TocState(TypedDict, total=False):
     draft_graph: dict[str, Any]
     critiques: list[dict[str, Any]]
     assumptions: list[dict[str, Any]]
+    interrogation_questions: list[str]
     toc_id: str
     tokens_used: int
     current_node: str
