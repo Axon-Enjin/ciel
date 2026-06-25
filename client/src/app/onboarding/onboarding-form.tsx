@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Input } from "@/components/ui/input";
-import { AuthAlert } from "@/components/auth/auth-alert";
 
 const ORG_TYPES = [
   { value: "ngo", label: "NGO / Non-profit" },

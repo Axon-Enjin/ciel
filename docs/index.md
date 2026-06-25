@@ -18,7 +18,7 @@
 | BRD — Business Requirements | [brd-ciel.md](brd-ciel.md) | 1.0 | Locked | 2026-06-25 | 2026-06-25 |
 | PRD — Product Requirements | [prd-ciel.md](prd-ciel.md) | 1.0 | Locked | 2026-06-25 | 2026-06-25 |
 | DSD — Design System | [dsd-ciel.md](dsd-ciel.md) | 1.0 | Locked | 2026-06-25 | 2026-06-25 |
-| SDD — System Design | [sdd-ciel.md](sdd-ciel.md) | 1.0 | Locked | 2026-06-25 | 2026-06-25 |
+| SDD — System Design | [sdd-ciel.md](sdd-ciel.md) | 1.0 | Locked | 2026-06-26 | 2026-06-26 |
 | QAD — QA & Test Plan | [qad-ciel.md](qad-ciel.md) | 1.0 | Locked | 2026-06-25 | 2026-06-25 |
 | SAD — Subagents | [sad-ciel.md](sad-ciel.md) | 1.0 | Locked | 2026-06-25 | 2026-06-25 |
 | BUILD — Build Guide | [build-ciel.md](build-ciel.md) | 1.0 | Locked | 2026-06-25 | 2026-06-25 |
@@ -41,6 +41,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 | CR ID | Date | Summary | Trigger doc | Docs touched | File |
 |-------|------|---------|-------------|--------------|------|
+| ciel-cr-003 | 2026-06-26 | Onboarding bootstrap: `create_organization` `SECURITY DEFINER` RPC + first-member membership policy (atomic org+admin create, fixes RLS chicken-and-egg); reconciled local migration history with the hosted DB | sdd-ciel.md | index.md, sdd-ciel.md, supabase/migrations | [cr-ciel-003.md](cr-ciel-003.md) |
 | ciel-cr-002 | 2026-06-26 | Runtime model → **GPT-only** on Microsoft Foundry (tenant exposes only GPT; Claude dropped from runtime); critique kept as a separate GPT pass | sdd-ciel.md | index.md, sdd-ciel.md, prd-ciel.md, rfc-ciel-toc-generator.md, rfc-ciel-field-mande.md, clr-ciel.md, build-ciel.md, evidence-ciel.md, gtm-ciel.md | [cr-ciel-002.md](cr-ciel-002.md) |
 | ciel-cr-001 | 2026-06-25 | AI service hosting: Azure Container Apps → Azure App Service (non-containerized); frontend stays on Vercel | sdd-ciel.md | sdd-ciel.md, ops-ciel.md | [cr-ciel-001.md](cr-ciel-001.md) |
 

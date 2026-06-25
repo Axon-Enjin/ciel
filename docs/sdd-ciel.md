@@ -202,6 +202,8 @@ graph TD
 **Caching strategy:** Redis — rate-limit counters (TTL 60s), SMS de-dupe keys (TTL 24h), generated-evidence cache (TTL 6h).
 **Data protection:** Row-Level Security so a user only sees their org's rows; PII (emails, field-subject data) treated as personal data under RA 10173 (CLR).
 
+**Onboarding bootstrap (functions & policies, [CR-003](cr-ciel-003.md)):** Creating the *first* organization is a chicken-and-egg under RLS (you can only add an admin membership if you are already an admin). It is resolved by a `SECURITY DEFINER` RPC **`public.create_organization(name, org_type, mission, region)`** that inserts the `organizations` row **and** the creator's `admin` `memberships` row atomically, returning the new org id. `EXECUTE` is granted to `authenticated` only (revoked from `anon`); the function raises `not authenticated` when `auth.uid()` is NULL. A complementary scoped policy `"Creators can insert initial admin membership"` permits a first member to self-insert exactly one `admin` row for an org that has no members yet.
+
 ---
 
 ## 4. API Design & External Integrations
@@ -212,6 +214,7 @@ graph TD
 
 | Method | Path | Purpose |
 |--------|------|---------|
+| POST | `/api/onboarding` | Create workspace: org + creator `admin` membership (atomic RPC `create_organization`, PRD-F4) |
 | POST | `/api/needs` | Create a need / project (PRD-F1) |
 | POST | `/api/toc/generate` | Proxy to AI service ToC graph (streamed) |
 | POST | `/api/toc/:id/lock` | Lock a ToC (requires failure_prompts_ack) |
@@ -239,7 +242,7 @@ graph TD
 
 **Authentication:** Supabase Auth (email magic link + password); org invite links.
 **Session management:** JWT in httpOnly cookies, short-lived access + refresh; SSR-safe via `@supabase/ssr`.
-**Authorization model:** Postgres **Row-Level Security** keyed on `memberships`; role gates (admin/program/field/viewer). Field role can write `field_entries` but not read financials.
+**Authorization model:** Postgres **Row-Level Security** keyed on `memberships`; role gates (admin/program/field/viewer). Field role can write `field_entries` but not read financials. First-member onboarding uses a scoped bootstrap policy + a `SECURITY DEFINER` RPC (`create_organization`) to avoid the empty-membership chicken-and-egg ([CR-003](cr-ciel-003.md)).
 **Data protection:**
 - PII encrypted at rest (Supabase managed) + RLS; field-subject data minimized and consented (RA 10173 → CLR).
 - Secrets in platform env (Vercel / Azure), never committed; Foundry keys scoped to the AI service.
