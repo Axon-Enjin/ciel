@@ -261,7 +261,7 @@ export const landingContent: LandingContent = {
     ],
     cta: {
       label: { en: "Generate a Theory of Change free" },
-      href: "#",
+      href: "/auth/sign-up",
       variant: "primary",
     },
   },
@@ -280,7 +280,7 @@ export const landingNav: LandingNavContent = {
     { id: "trust", label: { en: "Trust" }, href: "#trust" },
     { id: "audience", label: { en: "Audience" }, href: "#audience" },
   ],
-  signIn: { label: { en: "Sign in" }, href: "/sign-in" },
+  signIn: { label: { en: "Sign in" }, href: "/auth/sign-in" },
   cta: landingContent.hero.cta!,
 };
 

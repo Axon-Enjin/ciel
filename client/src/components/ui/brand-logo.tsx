@@ -21,6 +21,12 @@ const ASSETS: Record<BrandLogoVariant, StaticImageData> = {
   mark: markAsset,
 };
 
+/** Intrinsic dimensions aligned to SVG viewBox (used for Next/Image layout). */
+const INTRINSIC: Record<BrandLogoVariant, { width: number; height: number }> = {
+  mark: { width: 100, height: 100 },
+  lockup: { width: 380, height: 120 },
+};
+
 /**
  * Renders a real Ciel brand asset (lockup or mark) with a descriptive
  * accessible name. Server-compatible: no client hooks or "use client".
@@ -30,6 +36,7 @@ const ASSETS: Record<BrandLogoVariant, StaticImageData> = {
  */
 export function BrandLogo({ variant, title, className }: BrandLogoProps) {
   const asset = ASSETS[variant];
+  const { width, height } = INTRINSIC[variant];
 
   return (
     <Image
@@ -37,10 +44,9 @@ export function BrandLogo({ variant, title, className }: BrandLogoProps) {
       alt={title}
       role="img"
       aria-label={title}
+      width={width}
+      height={height}
       className={className}
-      // The asset is decorative-quality vector identity; let layout/CSS size it
-      // while preserving its intrinsic aspect ratio.
-      style={{ width: "auto", height: "auto" }}
       priority
     />
   );
