@@ -1,1 +1,17 @@
 .kiro
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Env secrets
+.env
+.env.local
+.env.*.local
+
+# IDE (local)
+.vscode/
