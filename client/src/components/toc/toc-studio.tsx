@@ -450,6 +450,11 @@ export function TocStudio({
                 Draft a grant proposal
               </Link>
             </Button>
+            <Button variant="secondary" asChild>
+              <Link href={`/projects/${projectId}`}>
+                View project dashboard
+              </Link>
+            </Button>
             <Button variant="ghost" asChild>
               <Link href="/dashboard">Back to dashboard</Link>
             </Button>

@@ -16,6 +16,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
   const updates: Record<string, unknown> = {};
   if (Array.isArray(body.sections)) updates.sections = body.sections;
+  if (Array.isArray(body.alignment)) updates.alignment = body.alignment;
   if (typeof body.title === "string") updates.title = body.title.slice(0, 200);
   if (typeof body.amount_php === "number" || body.amount_php === null) updates.amount_php = body.amount_php;
   if (typeof body.status === "string" && ["draft", "in_review", "final"].includes(body.status)) {
@@ -31,7 +32,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     .from("grant_proposals")
     .update(updates)
     .eq("id", id)
-    .select("id, title, status, amount_php, updated_at")
+    .select("id, title, status, amount_php, updated_at, alignment")
     .single();
 
   if (error || !data) {

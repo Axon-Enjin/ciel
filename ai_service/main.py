@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from .config import settings
-from .routers import health, toc, grants
+from .routers import grants, health, mande, toc
 
 # Configure logging
 logging.basicConfig(
@@ -57,6 +57,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(toc.router, prefix="/toc", tags=["theory-of-change"])
 app.include_router(grants.router, prefix="/grants", tags=["grants"])
+app.include_router(mande.router, prefix="/mande", tags=["mande"])
 
 
 @app.get("/")

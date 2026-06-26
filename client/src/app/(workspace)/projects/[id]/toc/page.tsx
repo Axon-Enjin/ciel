@@ -1,8 +1,9 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { TocStudio } from "@/components/toc/toc-studio";
 import type { FailurePrompt, TocGraph } from "@/components/toc/types";
+import { withOrgQuery } from "@/lib/workspace-context";
 
 export const metadata = {
   title: "ToC Studio — Ciel",
@@ -22,11 +23,6 @@ export default async function ProjectTocPage({
   const { id: projectId } = await params;
   const { generate, region, population } = await searchParams;
 
-  const user = await getCurrentUser();
-  if (!user) {
-    redirect(`/auth/sign-in?redirect=/projects/${projectId}/toc`);
-  }
-
   const supabase = await createClient();
   const { data: project } = await supabase
     .from("projects")
@@ -35,17 +31,6 @@ export default async function ProjectTocPage({
     .single();
 
   if (!project) {
-    redirect("/dashboard");
-  }
-
-  const { data: membership } = await supabase
-    .from("memberships")
-    .select("role")
-    .eq("org_id", project.org_id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!membership) {
     redirect("/dashboard");
   }
 
@@ -92,34 +77,38 @@ export default async function ProjectTocPage({
   const shouldAutoGenerate =
     generate === "1" && initialStatus !== "locked" && !initialGraph?.nodes.length;
 
-  return (
-    <main className="min-h-dvh bg-[var(--color-bg)] px-4 py-8 sm:px-6 sm:py-12">
-      <div className="mx-auto w-full max-w-5xl">
-        <nav className="flex items-center gap-3 text-[13px]" aria-label="Breadcrumb">
-          <Link
-            href="/dashboard"
-            className="text-[var(--color-primary)] hover:underline"
-          >
-            Dashboard
-          </Link>
-          <span className="text-[var(--color-text-muted)]">/</span>
-          <span className="text-[var(--color-text-muted)]">ToC Studio</span>
-        </nav>
+  const dashboardHref = withOrgQuery("/dashboard", project.org_id);
 
-        <div className="mt-6">
-          <TocStudio
-            projectId={project.id}
-            orgId={project.org_id}
-            need={project.need}
-            context={context}
-            autoGenerate={shouldAutoGenerate}
-            initialGraph={initialGraph}
-            initialCritiques={initialCritiques}
-            initialStatus={initialStatus}
-            initialTocId={initialTocId}
-          />
-        </div>
+  return (
+    <div className="mx-auto w-full max-w-5xl">
+      <nav className="flex items-center gap-3 text-[13px]" aria-label="Breadcrumb">
+        <Link href={dashboardHref} className="text-[var(--color-primary)] hover:underline">
+          Dashboard
+        </Link>
+        <span className="text-[var(--color-text-muted)]">/</span>
+        <Link
+          href={`/projects/${projectId}`}
+          className="text-[var(--color-primary)] hover:underline"
+        >
+          Project
+        </Link>
+        <span className="text-[var(--color-text-muted)]">/</span>
+        <span className="text-[var(--color-text-muted)]">ToC Studio</span>
+      </nav>
+
+      <div className="mt-6">
+        <TocStudio
+          projectId={project.id}
+          orgId={project.org_id}
+          need={project.need}
+          context={context}
+          autoGenerate={shouldAutoGenerate}
+          initialGraph={initialGraph}
+          initialCritiques={initialCritiques}
+          initialStatus={initialStatus}
+          initialTocId={initialTocId}
+        />
       </div>
-    </main>
+    </div>
   );
 }

@@ -149,7 +149,7 @@ def _template_sections(req: GrantGenerationRequest) -> list[dict[str, Any]]:
         "compliance_checklist": [],
     }
 
-    return [
+    sections = [
         {
             "key": key,
             "heading": heading,
@@ -160,6 +160,15 @@ def _template_sections(req: GrantGenerationRequest) -> list[dict[str, Any]]:
         }
         for key, heading in SECTION_SPEC
     ]
+
+    for section in sections:
+        if not section["source_ids"] and "[UNVERIFIED" not in section["content"]:
+            section["content"] = (
+                section["content"].rstrip()
+                + "\n\n[UNVERIFIED - needs human input]"
+            )
+
+    return sections
 
 
 def build_alignment(req: GrantGenerationRequest, sections: list[dict[str, Any]]) -> list[dict[str, Any]]:

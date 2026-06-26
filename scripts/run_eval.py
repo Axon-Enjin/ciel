@@ -34,6 +34,8 @@ def main() -> int:
             "ai_service/tests/test_h01_interrogate.py",
             "ai_service/tests/test_h01_graph_sse.py",
             "ai_service/tests/test_h02_lock_gate.py",
+            "ai_service/tests/test_h03_grant_grounding.py",
+            "ai_service/tests/test_h04_signal_engine.py",
         ])
     else:
         code = 1

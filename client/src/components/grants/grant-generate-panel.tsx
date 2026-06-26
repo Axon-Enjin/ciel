@@ -4,7 +4,8 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { streamGrantGeneration } from "./grant-stream";
 import { ProvenanceChip } from "./provenance-chip";
-import type { Funder, GrantSection } from "./types";
+import type { Funder, FunderAlignment, GrantSection } from "@/components/grants/types";
+import { Button } from "@/components/ui/button";
 import { IconSparkle, IconArrowUpRight, IconBuilding } from "@/components/dashboard/icons";
 
 const EASE = "cubic-bezier(0.22,1,0.36,1)";
@@ -36,6 +37,7 @@ export function GrantGeneratePanel({
     setPhase("streaming");
 
     const collected: GrantSection[] = [];
+    let capturedAlignment: FunderAlignment[] = [];
     await streamGrantGeneration(
       {
         project_id: projectId,
@@ -51,9 +53,14 @@ export function GrantGeneratePanel({
           setError(m);
           setPhase("idle");
         },
-        onDone: async ({ sections: finalSections }) => {
+        onAlignment: (a) => {
+          capturedAlignment = a;
+        },
+        onDone: async ({ sections: finalSections, alignment }) => {
           setPhase("saving");
           const payload = finalSections.length ? finalSections : collected;
+          const alignPayload =
+            alignment.length > 0 ? alignment : capturedAlignment;
           try {
             const res = await fetch("/api/grants", {
               method: "POST",
@@ -64,6 +71,7 @@ export function GrantGeneratePanel({
                 title: `${selected?.name ?? "Funder"} — proposal`,
                 sections: payload,
                 amount_php: amount ? Number(amount) : null,
+                alignment: alignPayload,
               }),
             });
             const data = await res.json();
@@ -157,18 +165,17 @@ export function GrantGeneratePanel({
             className="mt-2 w-48 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-[14px] text-[var(--color-text)] focus:[outline:2px_solid_var(--color-primary)] focus:[outline-offset:2px]"
           />
         </div>
-        <button
+        <Button
           type="button"
           onClick={generate}
           disabled={busy || !funderId}
-          className="group inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] py-2.5 pl-5 pr-2 text-[14px] font-semibold text-white transition-all duration-300 hover:bg-[var(--color-primary-hover)] active:scale-[0.98] disabled:opacity-50"
-          style={{ transitionTimingFunction: EASE }}
+          className="group gap-2 pl-5 pr-2"
         >
           {phase === "streaming" ? "Drafting…" : phase === "saving" ? "Opening editor…" : "Draft proposal"}
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-white/15 transition-all duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-[1px] group-hover:scale-105">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-white/15 transition-all duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-px group-hover:scale-105">
             {busy ? <IconSparkle size={16} className="animate-pulse" /> : <IconArrowUpRight size={16} />}
           </span>
-        </button>
+        </Button>
       </div>
 
       {error ? (

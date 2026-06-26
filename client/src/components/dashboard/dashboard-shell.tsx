@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import {
@@ -40,6 +40,36 @@ type NavItem = {
 
 const EASE = "cubic-bezier(0.22,1,0.36,1)";
 
+type ShellOrgContextValue = {
+  activeOrgId: string;
+  setActiveOrgId: (id: string) => void;
+};
+
+const ShellOrgContext = React.createContext<ShellOrgContextValue | null>(null);
+
+export function useShellOrg(): ShellOrgContextValue {
+  const ctx = React.useContext(ShellOrgContext);
+  if (!ctx) {
+    throw new Error("useShellOrg must be used within DashboardShell");
+  }
+  return ctx;
+}
+
+function isProjectHub(pathname: string): boolean {
+  const match = pathname.match(/^\/projects\/([^/]+)$/);
+  return match !== null && match[1] !== "new";
+}
+
+function isNavActive(label: string, pathname: string, base: string): boolean {
+  if (label === "Overview") {
+    return pathname === "/dashboard" || isProjectHub(pathname);
+  }
+  if (label === "ToC Studio") {
+    return pathname.startsWith("/projects/new") || pathname.includes("/toc");
+  }
+  return base === pathname;
+}
+
 function useNav(activeOrgId: string): NavItem[] {
   return [
     { label: "Overview", href: "/dashboard", icon: <IconHorizon size={19} /> },
@@ -67,7 +97,8 @@ function NavLinks({
       {items.map((item, i) => {
         const base = item.href.split("?")[0].split("#")[0];
         const isAnchor = item.href.includes("#");
-        const active = !item.soon && !isAnchor && base === pathname;
+        const active =
+          !item.soon && !isAnchor && isNavActive(item.label, pathname, base);
         if (item.soon) {
           return (
             <span
@@ -113,9 +144,37 @@ function NavLinks({
   );
 }
 
-export function DashboardShell({ user, orgs, activeOrgId, children }: DashboardShellProps) {
+export function DashboardShell({
+  user,
+  orgs,
+  activeOrgId: initialActiveOrgId,
+  children,
+}: DashboardShellProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [activeOrgId, setActiveOrgIdState] = React.useState(initialActiveOrgId);
+
+  const setActiveOrgId = React.useCallback(
+    (id: string) => {
+      if (orgs.some((o) => o.id === id)) {
+        setActiveOrgIdState(id);
+      }
+    },
+    [orgs],
+  );
+
+  React.useEffect(() => {
+    setActiveOrgIdState(initialActiveOrgId);
+  }, [initialActiveOrgId]);
+
+  React.useEffect(() => {
+    const fromUrl = searchParams.get("org");
+    if (fromUrl && orgs.some((o) => o.id === fromUrl)) {
+      setActiveOrgIdState(fromUrl);
+    }
+  }, [searchParams, orgs]);
+
   const items = useNav(activeOrgId);
 
   const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -194,6 +253,7 @@ export function DashboardShell({ user, orgs, activeOrgId, children }: DashboardS
   );
 
   return (
+    <ShellOrgContext.Provider value={{ activeOrgId, setActiveOrgId }}>
     <div className="min-h-[100dvh] bg-[var(--color-bg)] text-[var(--color-text)]">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col border-r border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_70%,var(--color-surface))] px-4 py-5 lg:flex">
@@ -392,6 +452,7 @@ export function DashboardShell({ user, orgs, activeOrgId, children }: DashboardS
         }
       `}</style>
     </div>
+    </ShellOrgContext.Provider>
   );
 }
 

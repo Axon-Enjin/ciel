@@ -363,6 +363,126 @@ class SupabaseClient:
             logger.error(f"Failed to retrieve project {project_id}: {e}")
             return None
 
+    # M&E / signals (RFC-002)
+
+    def get_locked_toc_for_project(self, project_id: str) -> dict | None:
+        try:
+            result = (
+                self.client.table("theories_of_change")
+                .select("id, status, version")
+                .eq("project_id", project_id)
+                .eq("status", "locked")
+                .order("version", desc=True)
+                .limit(1)
+                .execute()
+            )
+            rows = result.data or []
+            return rows[0] if rows else None
+        except APIError as e:
+            logger.error(f"Failed to get locked ToC for project {project_id}: {e}")
+            return None
+
+    def get_project_assumptions(self, project_id: str) -> List[Dict[str, Any]]:
+        toc = self.get_locked_toc_for_project(project_id)
+        if not toc:
+            return []
+        try:
+            result = (
+                self.client.table("toc_assumptions")
+                .select("id, statement, indicator, threshold")
+                .eq("toc_id", toc["id"])
+                .execute()
+            )
+            return result.data or []
+        except APIError as e:
+            logger.error(f"Failed to get assumptions for project {project_id}: {e}")
+            return []
+
+    def get_indicator_points(
+        self, project_id: str, *, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("indicator_points")
+                .select("indicator, value, observed_at, assumption_id")
+                .eq("project_id", project_id)
+                .order("observed_at", desc=False)
+                .limit(limit)
+                .execute()
+            )
+            return result.data or []
+        except APIError as e:
+            logger.error(f"Failed to get indicator points for {project_id}: {e}")
+            return []
+
+    def insert_indicator_point(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            result = self.client.table("indicator_points").insert(row).execute()
+            return result.data[0]
+        except APIError as e:
+            logger.error(f"Failed to insert indicator point: {e}")
+            raise
+
+    def insert_field_entry(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            result = self.client.table("field_entries").insert(row).execute()
+            return result.data[0]
+        except APIError as e:
+            logger.error(f"Failed to insert field entry: {e}")
+            raise
+
+    def insert_signal(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            result = self.client.table("signals").insert(row).execute()
+            return result.data[0]
+        except APIError as e:
+            logger.error(f"Failed to insert signal: {e}")
+            raise
+
+    def get_project_signals(
+        self, project_id: str, *, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("signals")
+                .select("*")
+                .eq("project_id", project_id)
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return result.data or []
+        except APIError as e:
+            logger.error(f"Failed to get signals for {project_id}: {e}")
+            return []
+
+    def has_recent_signal(
+        self,
+        project_id: str,
+        assumption_id: str,
+        signal_type: str,
+        *,
+        hours: int = 24,
+    ) -> bool:
+        try:
+            from datetime import datetime, timedelta, timezone
+
+            since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+            result = (
+                self.client.table("signals")
+                .select("id")
+                .eq("project_id", project_id)
+                .eq("assumption_id", assumption_id)
+                .eq("signal_type", signal_type)
+                .gte("created_at", since)
+                .limit(1)
+                .execute()
+            )
+            return bool(result.data)
+        except APIError as e:
+            logger.error(f"Failed to check recent signal: {e}")
+            return False
+
 
 # Global instance
 supabase_client = SupabaseClient()

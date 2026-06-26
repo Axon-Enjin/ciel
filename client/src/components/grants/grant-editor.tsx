@@ -1,9 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import { streamGrantGeneration } from "./grant-stream";
 import { ProvenanceChip } from "./provenance-chip";
-import type { Funder, GrantSection } from "./types";
+import { resolveAlignment } from "@/components/mande/types";
+import type { Funder, FunderAlignment, GrantSection } from "./types";
 import {
   IconRefresh,
   IconDownload,
@@ -21,15 +24,20 @@ interface Proposal {
   amount_php: number | null;
   funder_id: string | null;
   sections: GrantSection[];
+  alignment?: FunderAlignment[] | null;
 }
 
-function computeAlignment(funder: Funder | null, sections: GrantSection[]) {
+function computeAlignment(funder: Funder | null, sections: GrantSection[]): FunderAlignment[] {
   if (!funder) return [];
   const blob = sections.map((s) => s.content).join(" ").toLowerCase();
   return funder.kpis.map((kpi) => {
     const tokens = kpi.replace(/_/g, " ").split(" ").filter((t) => t.length > 3);
     const addressed = tokens.length > 0 && tokens.some((t) => blob.includes(t));
-    return { kpi, addressed };
+    return {
+      kpi,
+      addressed,
+      note: addressed ? "Reflected in draft" : "Add explicit metric to strengthen",
+    };
   });
 }
 
@@ -46,26 +54,38 @@ export function GrantEditor({
   const [status, setStatus] = React.useState<Status>(proposal.status);
   const [sections, setSections] = React.useState<GrantSection[]>(proposal.sections ?? []);
   const [regenKey, setRegenKey] = React.useState<string | null>(null);
-  const [saveState, setSaveState] = React.useState<"idle" | "saving" | "saved">("idle");
+  const [saveState, setSaveState] = React.useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [exported, setExported] = React.useState(false);
 
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const alignment = computeAlignment(funder, sections);
+  const alignment = resolveAlignment(
+    proposal.alignment,
+    computeAlignment(funder, sections),
+  );
 
   const persist = React.useCallback(
     async (patch: Record<string, unknown>) => {
       setSaveState("saving");
+      setSaveError(null);
       try {
         const res = await fetch(`/api/grants/${proposal.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Save failed");
+        }
         setSaveState("saved");
         setTimeout(() => setSaveState("idle"), 1500);
-      } catch {
-        setSaveState("idle");
+      } catch (err) {
+        setSaveState("error");
+        setSaveError(err instanceof Error ? err.message : "Save failed");
+        setTimeout(() => setSaveState("idle"), 3000);
       }
     },
     [proposal.id],
@@ -145,6 +165,16 @@ export function GrantEditor({
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
+      {saveState === "error" && saveError ? (
+        <Surface
+          className="col-span-full border-[color-mix(in_srgb,var(--color-error)_35%,var(--color-border))] p-4 lg:col-span-2"
+          elevation="sm"
+        >
+          <p className="text-sm font-medium text-[var(--color-error)]">
+            Could not save changes: {saveError}
+          </p>
+        </Surface>
+      ) : null}
       {/* Main editor column */}
       <div className="min-w-0">
         <input
@@ -230,8 +260,14 @@ export function GrantEditor({
               ))}
             </div>
 
-            <p className="mt-3 h-4 text-[11px] text-[var(--color-text-muted)]">
-              {saveState === "saving" ? "Saving…" : saveState === "saved" ? "All changes saved" : ""}
+            <p className="mt-3 min-h-[1.25rem] text-[11px] text-[var(--color-text-muted)]">
+              {saveState === "saving"
+                ? "Saving…"
+                : saveState === "saved"
+                  ? "All changes saved"
+                  : saveState === "error"
+                    ? saveError
+                    : ""}
             </p>
           </div>
         </div>
@@ -265,16 +301,15 @@ export function GrantEditor({
           </div>
         ) : null}
 
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          className="w-full"
           onClick={exportMarkdown}
-          className="group flex w-full items-center justify-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 text-[13px] font-semibold text-[var(--color-text)] transition-colors hover:border-[var(--color-primary)]"
         >
           {exported ? "Copied + downloaded" : "Export as Markdown"}
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] transition-transform duration-300 group-hover:-translate-y-[1px]">
-            <IconDownload size={15} />
-          </span>
-        </button>
+          <IconDownload size={15} />
+        </Button>
 
         <p className="px-1 text-[11px] leading-relaxed text-[var(--color-text-muted)]">
           AI drafts; you hold the pen. Edited sections are marked human-edited and are never

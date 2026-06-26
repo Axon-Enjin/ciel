@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { withOrgQuery } from "@/lib/workspace-context";
 
 export function NeedIntakeForm({ orgId }: { orgId: string }) {
   const router = useRouter();
@@ -33,7 +34,7 @@ export function NeedIntakeForm({ orgId }: { orgId: string }) {
       const params = new URLSearchParams({ generate: "1" });
       if (region.trim()) params.set("region", region.trim());
       if (population.trim()) params.set("population", population.trim());
-      router.push(`/projects/${projectId}/toc?${params.toString()}`);
+      router.push(withOrgQuery(`/projects/${projectId}/toc?${params.toString()}`, orgId));
     } catch {
       setError("Network error. Please try again.");
     } finally {
