@@ -7,7 +7,8 @@ uvicorn[standard]==0.32.0
 python-multipart==0.0.12
 
 # Database & Storage
-supabase==2.9.0
+# >=2.31 accepts the new Supabase API key format (sb_secret_… / sb_publishable_…)
+supabase>=2.31,<3
 
 # AI & LangGraph
 langgraph==0.2.45
@@ -15,11 +16,12 @@ langchain==0.3.7
 langchain-core==0.3.15
 
 # Microsoft Foundry (Azure OpenAI) — GPT-only runtime (cr-ciel-002)
-openai==1.54.0
+# >=2.2 required for the Responses API (gpt-5.x deployments are Responses-only).
+openai>=2.2,<3
 
 # Data Validation
-pydantic==2.10.0
-pydantic-settings==2.6.0
+pydantic>=2.11,<3
+pydantic-settings>=2.6,<3
 
 # Utilities
 python-dotenv==1.0.1

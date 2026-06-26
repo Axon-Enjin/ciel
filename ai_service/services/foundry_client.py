@@ -7,15 +7,24 @@ Foundry powers Theory-of-Change generation and the adversarial
 distinct privileged system prompt and a deeper reasoning effort — single-model
 self-critique, not a different model family.
 
-Talks to Foundry through the OpenAI-compatible Azure client. GPT-5.x are
-reasoning models, so requests use ``max_completion_tokens`` + ``reasoning_effort``
-and omit ``temperature`` (set ``FOUNDRY_REASONING_MODEL=false`` for a classic
-gpt-4o-class deployment that uses ``temperature`` + ``max_tokens``).
+Talks to Foundry via the **Responses API** through ``AsyncAzureOpenAI``. The
+``gpt-5.x`` deployments on this Foundry resource are only exposed on the
+Responses API (``/openai/responses``) — the legacy chat-completions route 404s
+— so all calls go through ``client.responses.create``. The dedicated Azure
+client (``azure_endpoint`` + ``api_version``) is used because the raw
+``/openai/v1`` base URL routes the Responses endpoint unreliably.
+
+GPT-5.x are reasoning models, so requests use ``max_output_tokens`` +
+``reasoning={"effort": ...}`` and omit ``temperature`` (set
+``FOUNDRY_REASONING_MODEL=false`` for a classic gpt-4o-class deployment that
+uses ``temperature`` instead). When JSON output is required, the input text must
+contain the word "json" (a Responses-API constraint for ``text.format`` of type
+``json_object``).
 """
 
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 
 from openai import AsyncAzureOpenAI
 
@@ -23,9 +32,11 @@ from ai_service.config import settings
 
 logger = logging.getLogger(__name__)
 
+_JSON_FORMAT = {"type": "json_object"}
+
 
 class FoundryClient:
-    """Microsoft Foundry (Azure OpenAI) client wrapper for the GPT runtime.
+    """Microsoft Foundry (Azure OpenAI) Responses-API wrapper for the GPT runtime.
 
     One deployment serves both generation and critique. Token budgets follow
     SDD §8: 12k generation, 10k critique.
@@ -43,44 +54,45 @@ class FoundryClient:
         # GPT-only: one deployment for every task (generation + critique).
         self.model = settings.FOUNDRY_DEPLOYMENT_GPT
 
-        # Token budgets per SDD §8.
+        # Token budgets per SDD §8 (output-token budgets on the Responses API).
         self.max_tokens_generation = settings.MAX_TOKENS_TOC_GENERATION  # 12000
         self.max_tokens_critique = settings.MAX_TOKENS_CRITIQUE  # 10000
 
     @property
     def client(self) -> AsyncAzureOpenAI:
-        """Lazily construct the Azure OpenAI client with bounded timeout/retries."""
+        """Lazily construct the Azure OpenAI client with bounded timeout/retries.
+
+        ``FOUNDRY_ENDPOINT`` must be the **bare resource** endpoint, e.g.
+        ``https://<resource>.services.ai.azure.com`` (no ``/openai/v1`` suffix).
+        """
         if self._client is None:
             self._client = AsyncAzureOpenAI(
-                api_key=settings.FOUNDRY_API_KEY,
                 azure_endpoint=settings.FOUNDRY_ENDPOINT,
+                api_key=settings.FOUNDRY_API_KEY,
                 api_version=settings.FOUNDRY_API_VERSION,
                 timeout=settings.FOUNDRY_TIMEOUT_SECONDS,
                 max_retries=settings.FOUNDRY_MAX_RETRIES,
             )
         return self._client
 
-    def _completion_kwargs(
+    def _response_kwargs(
         self,
         max_tokens: int,
         temperature: float,
         reasoning_effort: str,
     ) -> Dict[str, Any]:
-        """Assemble request params for the configured model class.
+        """Assemble Responses-API params for the configured model class.
 
-        Reasoning models (GPT-5.x) reject ``temperature``/``max_tokens`` and use
-        ``max_completion_tokens`` + ``reasoning_effort``. Classic models use the
-        traditional ``temperature`` + ``max_tokens`` pair.
+        Reasoning models (GPT-5.x) use ``max_output_tokens`` +
+        ``reasoning={"effort": ...}`` and reject ``temperature``. Classic models
+        use ``max_output_tokens`` + ``temperature``.
         """
+        kwargs: Dict[str, Any] = {"max_output_tokens": max_tokens}
         if settings.FOUNDRY_REASONING_MODEL:
-            return {
-                "max_completion_tokens": max_tokens,
-                "reasoning_effort": reasoning_effort,
-            }
-        return {
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
+            kwargs["reasoning"] = {"effort": reasoning_effort}
+        else:
+            kwargs["temperature"] = temperature
+        return kwargs
 
     async def generate_toc(
         self,
@@ -102,11 +114,9 @@ class FoundryClient:
         Returns:
             Generated ToC as a streaming iterator or a complete JSON string.
         """
-        messages: List[Dict[str, str]] = [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": f"""# Evidence Context
+        # The input must mention "json" to use JSON output mode on the
+        # Responses API — the closing instruction below satisfies that.
+        input_text = f"""# Evidence Context
 
 {evidence_context}
 
@@ -114,53 +124,61 @@ class FoundryClient:
 
 {user_prompt}
 
-Generate a Theory of Change following the system instructions. Ground all claims in the provided evidence or explicitly mark as [UNVERIFIED - needs human input]. Return a single valid JSON object.""",
-            },
-        ]
+Generate a Theory of Change following the system instructions. Ground all claims in the provided evidence or explicitly mark as [UNVERIFIED - needs human input]. Return a single valid JSON object."""
 
-        kwargs = self._completion_kwargs(
+        kwargs = self._response_kwargs(
             max_tokens=self.max_tokens_generation,
             temperature=temperature,
             reasoning_effort=settings.FOUNDRY_REASONING_EFFORT_GENERATION,
         )
 
         if stream:
-            return self._stream_response(messages=messages, **kwargs)
-
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                response_format={"type": "json_object"},
+            return self._stream_response(
+                instructions=system_prompt,
+                input_text=input_text,
+                json_mode=True,
                 **kwargs,
             )
-            return response.choices[0].message.content or ""
+
+        try:
+            response = await self.client.responses.create(
+                model=self.model,
+                instructions=system_prompt,
+                input=input_text,
+                text={"format": _JSON_FORMAT},
+                **kwargs,
+            )
+            return response.output_text or ""
         except Exception as e:
             logger.error(f"ToC generation failed: {e}")
             raise
 
     async def _stream_response(
         self,
-        messages: List[Dict[str, str]],
+        instructions: str,
+        input_text: str,
+        json_mode: bool = False,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Stream a chat completion from the GPT deployment.
+        """Stream a Responses-API completion from the GPT deployment.
 
         Yields text deltas as they are generated.
         """
+        create_kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "instructions": instructions,
+            "input": input_text,
+            "stream": True,
+            **kwargs,
+        }
+        if json_mode:
+            create_kwargs["text"] = {"format": _JSON_FORMAT}
+
         try:
-            stream = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                stream=True,
-                **kwargs,
-            )
-            async for chunk in stream:
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta
+            stream = await self.client.responses.create(**create_kwargs)
+            async for event in stream:
+                if event.type == "response.output_text.delta":
+                    yield event.delta
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
             raise
@@ -184,27 +202,16 @@ Generate a Theory of Change following the system instructions. Ground all claims
         Returns:
             Critique text with identified issues and severity.
         """
-        system_prompt = """You are an expert evaluator of Theories of Change for social sector programs. Your role is to provide adversarial critique to identify potential flaws, gaps, and risks.
+        system_prompt = """You are an expert evaluator of Theories of Change for social sector programs. You surface the most likely ways this program will fail in the real world — concise, high-signal "intelligent failure" warnings a practitioner must confront before committing.
 
-Analyze the ToC for:
-1. **Logic Gaps**: Are causal pathways well-justified? Are there missing links?
-2. **Evidence Quality**: Are claims properly grounded in evidence? Is evidence tier appropriate?
-3. **Assumptions**: Are critical assumptions identified and testable?
-4. **Context**: Are contextual factors and risks adequately addressed?
-5. **Feasibility**: Is the intervention realistic given typical resource constraints?
+Return the TOP 2-3 failure modes only. For each, write ONE short paragraph (max 2 sentences) that:
+- names a concrete way similar programs have failed in comparable contexts,
+- ties it to a specific assumption, logic gap, evidence weakness, or feasibility risk in THIS ToC,
+- and implies what to watch or plan for.
 
-For each issue found, provide:
-- **Issue**: Clear description of the problem
-- **Severity**: CRITICAL (blocks implementation), HIGH (major risk), MEDIUM (should address), LOW (minor improvement)
-- **Recommendation**: Specific suggestion for improvement
+Lead each with its severity in brackets, e.g. "[HIGH] ...". Be specific and blunt. No preamble, no headings, no overall summary, no closing remarks — just the 2-3 warnings as a plain list."""
 
-Be constructively critical. The goal is to strengthen the ToC, not reject it."""
-
-        messages: List[Dict[str, str]] = [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": f"""# Theory of Change to Critique
+        input_text = f"""# Theory of Change to Critique
 
 {toc_content}
 
@@ -212,23 +219,22 @@ Be constructively critical. The goal is to strengthen the ToC, not reject it."""
 
 {evidence_context}
 
-Provide a thorough critique following the system instructions. Focus on substantive issues that could affect program success.""",
-            },
-        ]
+Give the 2-3 most important failure-mode warnings for this Theory of Change."""
 
-        kwargs = self._completion_kwargs(
+        kwargs = self._response_kwargs(
             max_tokens=self.max_tokens_critique,
             temperature=temperature,
             reasoning_effort=settings.FOUNDRY_REASONING_EFFORT_CRITIQUE,
         )
 
         try:
-            response = await self.client.chat.completions.create(
+            response = await self.client.responses.create(
                 model=self.model,
-                messages=messages,
+                instructions=system_prompt,
+                input=input_text,
                 **kwargs,
             )
-            return response.choices[0].message.content or ""
+            return response.output_text or ""
         except Exception as e:
             logger.error(f"Critique generation failed: {e}")
             raise
@@ -258,25 +264,25 @@ Provide a thorough critique following the system instructions. Focus on substant
 
 Return ONLY a valid JSON object matching the schema. Do not include any other text."""
 
-        messages: List[Dict[str, str]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text},
-        ]
+        # Append an explicit JSON instruction so the input satisfies the
+        # Responses-API "must contain 'json'" rule for JSON output mode.
+        input_text = f"{text}\n\nReturn the result as a single valid JSON object."
 
-        kwargs = self._completion_kwargs(
+        kwargs = self._response_kwargs(
             max_tokens=4000,
             temperature=0.0,  # Deterministic for structured extraction.
             reasoning_effort="low",
         )
 
         try:
-            response = await self.client.chat.completions.create(
+            response = await self.client.responses.create(
                 model=model or self.model,
-                messages=messages,
-                response_format={"type": "json_object"},
+                instructions=system_prompt,
+                input=input_text,
+                text={"format": _JSON_FORMAT},
                 **kwargs,
             )
-            return json.loads(response.choices[0].message.content or "{}")
+            return json.loads(response.output_text or "{}")
         except Exception as e:
             logger.error(f"Structured extraction failed: {e}")
             raise
@@ -288,11 +294,11 @@ Return ONLY a valid JSON object matching the schema. Do not include any other te
             True if the GPT deployment responds, False otherwise.
         """
         try:
-            await self.client.chat.completions.create(
+            await self.client.responses.create(
                 model=self.model,
-                messages=[{"role": "user", "content": "ping"}],
-                **self._completion_kwargs(
-                    max_tokens=16,
+                input="ping",
+                **self._response_kwargs(
+                    max_tokens=1000,
                     temperature=0.0,
                     reasoning_effort="low",
                 ),

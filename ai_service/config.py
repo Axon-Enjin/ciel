@@ -4,6 +4,8 @@ Manages environment variables and settings
 Date: 2026-06-25
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 from typing import List
 
@@ -19,29 +21,34 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str = "dev-service-key"
 
     # Microsoft Foundry Configuration (GPT-only runtime — see cr-ciel-002)
+    # FOUNDRY_ENDPOINT is the BARE resource endpoint (no /openai path), e.g.
+    # https://<resource>.services.ai.azure.com — the AsyncAzureOpenAI client
+    # appends the Responses-API route itself.
     FOUNDRY_ENDPOINT: str = "https://example.invalid"
     FOUNDRY_API_KEY: str = ""
+    # Azure data-plane API version. gpt-5.x reasoning models on the Responses
+    # API need a recent preview version; "preview" is NOT a valid value here.
+    FOUNDRY_API_VERSION: str = "2025-04-01-preview"
     # Single GPT deployment powers every AI task (generation + critique).
     # The concrete deployment name is set in the Foundry portal; "gpt-5.4" is
     # the team default. Critique is a separate GPT pass, not a separate model.
     FOUNDRY_DEPLOYMENT_GPT: str = "gpt-5.4"
-    # Azure OpenAI data-plane API version. The preview surface is required for
-    # GPT-5 reasoning features (reasoning_effort / max_completion_tokens).
-    FOUNDRY_API_VERSION: str = "2025-04-01-preview"
 
     # GPT-5.x are reasoning models: they reject temperature/top_p/max_tokens and
     # require max_completion_tokens. Set False for a classic (gpt-4o-class)
     # deployment that uses temperature + max_tokens instead.
     FOUNDRY_REASONING_MODEL: bool = True
     # Reasoning effort per task. Critique uses a higher effort for a deeper,
-    # more focused adversarial pass (replaces the old "lower temperature" knob,
-    # which reasoning models don't support).
+    # Reasoning effort per task. "high" makes gpt-5.x dramatically slower
+    # (tens of seconds → timeouts); "medium" gives a substantive critique in a
+    # few seconds, which is the better UX for the interactive ToC flow.
     FOUNDRY_REASONING_EFFORT_GENERATION: str = "medium"
-    FOUNDRY_REASONING_EFFORT_CRITIQUE: str = "high"
+    FOUNDRY_REASONING_EFFORT_CRITIQUE: str = "medium"
 
-    # Model SDK client tuning (bounds latency when Foundry is slow/unreachable)
-    FOUNDRY_TIMEOUT_SECONDS: float = 30.0
-    FOUNDRY_MAX_RETRIES: int = 2
+    # Model SDK client tuning. Reasoning models are slow, so allow a generous
+    # per-request timeout and a single retry (avoids 3× stacking on real fails).
+    FOUNDRY_TIMEOUT_SECONDS: float = 90.0
+    FOUNDRY_MAX_RETRIES: int = 1
     EMBEDDING_TIMEOUT_SECONDS: float = 15.0
     EMBEDDING_MAX_RETRIES: int = 0
     EMBEDDING_MODEL: str = "text-embedding-3-small"
@@ -56,7 +63,9 @@ class Settings(BaseSettings):
     
     # Token Budget (per SDD §8)
     MAX_TOKENS_TOC_GENERATION: int = 12000
-    MAX_TOKENS_CRITIQUE: int = 10000
+    # Critique is intentionally concise (a few short failure prompts), so it
+    # needs a small budget — a large one just makes the reasoning model slower.
+    MAX_TOKENS_CRITIQUE: int = 3000
     MAX_TOKENS_GRANT_SECTION: int = 6000
     
     # Feature Flags
@@ -67,7 +76,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     
     class Config:
-        env_file = ".env"
+        # Resolve .env next to this module so it loads no matter the cwd
+        # (e.g. running uvicorn from the repo root).
+        env_file = str(Path(__file__).resolve().parent / ".env")
         case_sensitive = True
 
     # Placeholder values that must never count as real credentials.

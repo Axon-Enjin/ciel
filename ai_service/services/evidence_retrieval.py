@@ -38,12 +38,12 @@ class EvidenceRetriever:
 
     @property
     def embedding_client(self) -> AzureOpenAI:
-        """Lazily construct the embedding client with a bounded timeout."""
+        """Lazily construct the embedding client on the Foundry resource."""
         if self._embedding_client is None:
             self._embedding_client = AzureOpenAI(
-                api_key=settings.FOUNDRY_API_KEY,
-                api_version="2024-02-01",
                 azure_endpoint=settings.FOUNDRY_ENDPOINT,
+                api_key=settings.FOUNDRY_API_KEY,
+                api_version=settings.FOUNDRY_API_VERSION,
                 timeout=settings.EMBEDDING_TIMEOUT_SECONDS,
                 max_retries=settings.EMBEDDING_MAX_RETRIES,
             )
