@@ -31,7 +31,7 @@ Targets pulled from [SDD §7](sdd-ciel.md); this is where they become measured c
 
 | Pillar | Tool | What's captured | Retention |
 |--------|------|-----------------|-----------|
-| Logs | platform logs (Vercel + ACA) structured JSON | request_id on every line; errors; auth events | 30 days |
+| Logs | platform logs (Vercel + Azure App Service) structured JSON | request_id on every line; errors; auth events | 30 days |
 | Metrics | APM + PostHog | SLIs above + PRD §5.5 business events | 90 days (events), 30 (system) |
 | Traces (AI) | **Langfuse** (project "Ciel") | every Foundry call: prompt shape, tokens, cost, latency, eval score | 30–90 days |
 

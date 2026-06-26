@@ -60,7 +60,7 @@
 
 **Proof points (all grounded — see [evidence-ciel.md](evidence-ciel.md)):**
 - The gap is real: **88% of orgs use AI, ~two-thirds haven't scaled it, only 39% see impact** (McKinsey 2025).
-- The tailwind is real: **BCG committed $500M to AI for social impact, partnered with Anthropic/Claude** — the model Ciel runs on.
+- The tailwind is real: **BCG committed $500M to AI for social impact, partnered with Anthropic/Claude** — the same social-impact-AI bet Ciel is built on; Ciel runs on **Microsoft Foundry (GPT)**.
 - The method is proven: built on **BCG 10-20-70, McKinsey Rewired, Deloitte Trustworthy AI**; AI-in-social outcomes like **+700 patients/week (IBM watsonx, UHCW)**.
 
 **Objection handling:**

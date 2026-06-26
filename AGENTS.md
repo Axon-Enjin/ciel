@@ -2,7 +2,7 @@
 
 > Materialized from the canonical Build Guide [`docs/build-ciel.md`](docs/build-ciel.md). **Edit the canonical guide, then re-materialize — do not hand-edit this file as the source of truth.** The frontend-scoped note in [`client/AGENTS.md`](client/AGENTS.md) stays as-is.
 
-**Ciel** is an AI-native *Impact Operating System* for the social sector (Create & Conquer 2026, Theme #2): turn a social need into a grounded Theory of Change → funded grant proposals → a predictive M&E loop. Stack: **Next.js 16** (web) + **Python FastAPI/LangGraph** (AI service) + **Microsoft Foundry** (models/agents/RAG; Claude primary) + **Supabase** (Postgres/pgvector/Auth/Storage).
+**Ciel** is an AI-native *Impact Operating System* for the social sector (Create & Conquer 2026, Theme #2): turn a social need into a grounded Theory of Change → funded grant proposals → a predictive M&E loop. Stack: **Next.js 16** (web) + **Python FastAPI/LangGraph** (AI service) + **Microsoft Foundry** (models/agents/RAG; GPT-only runtime) + **Supabase** (Postgres/pgvector/Auth/Storage).
 
 ## Read order (every session)
 1. [docs/index.md](docs/index.md) — manifest + health check (start here)

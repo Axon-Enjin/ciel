@@ -6,7 +6,7 @@ Date: 2026-06-25
 
 from fastapi import APIRouter, status
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 import sys
 
 router = APIRouter()
@@ -37,7 +37,7 @@ async def health_check():
     
     return HealthResponse(
         status="healthy",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         version="1.0.0",
         python_version=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         environment=settings.ENVIRONMENT,
@@ -52,13 +52,12 @@ async def readiness_check():
     """
     from ..config import settings
     from ..services.supabase_client import supabase_client
-    from ..services.foundry_client import foundry_client
-    
-    checks = {
+
+    checks: dict = {
         "config_loaded": bool(settings.SUPABASE_URL),
-        "foundry_configured": bool(settings.FOUNDRY_ENDPOINT),
+        "ai_configured": settings.ai_ready,
     }
-    
+
     # Check Supabase connectivity
     try:
         supabase_healthy = await supabase_client.health_check()
@@ -66,17 +65,25 @@ async def readiness_check():
     except Exception as e:
         checks["database_connected"] = False
         checks["database_error"] = str(e)
-    
-    # Check Foundry connectivity
-    try:
-        foundry_healthy = await foundry_client.health_check()
-        checks["foundry_accessible"] = foundry_healthy
-    except Exception as e:
-        checks["foundry_accessible"] = False
-        checks["foundry_error"] = str(e)
-    
-    ready = all(v for k, v in checks.items() if not k.endswith("_error"))
-    
+
+    # Only probe Foundry when credentials are actually configured — otherwise
+    # the call is guaranteed to fail and just adds latency. AI is an optional
+    # dependency: the service degrades to template output when it's absent.
+    if settings.ai_ready:
+        from ..services.foundry_client import foundry_client
+
+        try:
+            checks["foundry_accessible"] = await foundry_client.health_check()
+        except Exception as e:
+            checks["foundry_accessible"] = False
+            checks["foundry_error"] = str(e)
+    else:
+        checks["foundry_accessible"] = None  # not configured
+
+    # Readiness reflects only required dependencies (config + database).
+    # Foundry is intentionally excluded so the offline/template path is "ready".
+    ready = bool(checks["config_loaded"]) and bool(checks.get("database_connected"))
+
     return ReadinessResponse(
         ready=ready,
         checks=checks,

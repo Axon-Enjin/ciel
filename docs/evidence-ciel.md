@@ -79,7 +79,7 @@ The fact-check **strengthens** the case rather than weakening it:
 3. **The credibility scaffolding holds** (C1–C4, D1–D2): BCG 10-20-70, McKinsey Rewired/Lilli, Deloitte Trustworthy AI, and watsonx outcomes all check out — and Lilli's RAG pattern + Deloitte's seven dimensions become concrete design inputs.
 4. **Two stale facts were caught before they shipped** (E1, D2/D3): the procurement law (RA 9184 → **RA 12009**) and the Blendow figure (70% → **90%**); the Valorem 80% is demoted to vendor-stated.
 
-**Stack note (Stack Currency):** "Azure AI Foundry" is now **Microsoft Foundry** (Jan 2026 Product Terms); Foundry Agent Service (Responses API), Foundry IQ (managed RAG), and a multi-model control plane that runs **both Claude and GPT** — the only major cloud to do so. This both modernizes the stack docs and lets Ciel run Claude, aligning with the BCG/Anthropic (C2) narrative. Full detail in the SDD/BUILD.
+**Stack note (Stack Currency):** "Azure AI Foundry" is now **Microsoft Foundry** (Jan 2026 Product Terms); Foundry Agent Service (Responses API), Foundry IQ (managed RAG), and a multi-model control plane that *can* run **both Claude and GPT** — the only major cloud to do so. Ciel's own tenant exposes **only GPT**, so the runtime is **GPT-only** (cr-ciel-002); the BCG/Anthropic (C2) item remains a verified market-tailwind fact about the *sector*, independent of Ciel's model choice. Full detail in the SDD/BUILD.
 
 ---
 

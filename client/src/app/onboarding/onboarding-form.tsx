@@ -2,9 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { Input } from "@/components/ui/input";
-import { AuthAlert } from "@/components/auth/auth-alert";
 
 const ORG_TYPES = [
   { value: "ngo", label: "NGO / Non-profit" },
@@ -13,7 +10,7 @@ const ORG_TYPES = [
   { value: "csr", label: "CSR / Corporate" },
 ] as const;
 
-export function OnboardingForm({ userId, email }: { userId: string; email: string }) {
+export function OnboardingForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [orgType, setOrgType] = useState<(typeof ORG_TYPES)[number]["value"]>("ngo");
@@ -28,38 +25,20 @@ export function OnboardingForm({ userId, email }: { userId: string; email: strin
     setError(null);
 
     try {
-      const supabase = createClient();
-
-      await supabase.from("users").upsert({
-        id: userId,
-        email,
-        display_name: email.split("@")[0],
-      });
-
-      const { data: org, error: orgError } = await supabase
-        .from("organizations")
-        .insert({
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: name.trim(),
           org_type: orgType,
           mission: mission.trim() || null,
           region: region.trim() || null,
-        })
-        .select("id")
-        .single();
-
-      if (orgError || !org) {
-        setError(orgError?.message ?? "Failed to create organization");
-        return;
-      }
-
-      const { error: memberError } = await supabase.from("memberships").insert({
-        org_id: org.id,
-        user_id: userId,
-        role: "admin",
+        }),
       });
 
-      if (memberError) {
-        setError(memberError.message);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Failed to create workspace");
         return;
       }
 

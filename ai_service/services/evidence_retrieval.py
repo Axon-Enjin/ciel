@@ -25,14 +25,29 @@ class EvidenceRetriever:
     """
     
     def __init__(self):
-        """Initialize Azure OpenAI client for embeddings."""
-        self.embedding_client = AzureOpenAI(
-            api_key=settings.FOUNDRY_API_KEY,
-            api_version="2024-02-01",
-            azure_endpoint=settings.FOUNDRY_ENDPOINT,
-        )
-        self.embedding_model = "text-embedding-3-small"
-        self.embedding_dimensions = 1536
+        """Defer embedding-client creation until first use.
+
+        Building the Azure OpenAI client is delayed so importing this module
+        never requires Foundry credentials. When credentials are absent,
+        retrieval skips embeddings entirely (see ``retrieve_evidence``) rather
+        than issuing doomed network calls.
+        """
+        self._embedding_client: Optional[AzureOpenAI] = None
+        self.embedding_model = settings.EMBEDDING_MODEL
+        self.embedding_dimensions = settings.EMBEDDING_DIMENSIONS
+
+    @property
+    def embedding_client(self) -> AzureOpenAI:
+        """Lazily construct the embedding client on the Foundry resource."""
+        if self._embedding_client is None:
+            self._embedding_client = AzureOpenAI(
+                azure_endpoint=settings.FOUNDRY_ENDPOINT,
+                api_key=settings.FOUNDRY_API_KEY,
+                api_version=settings.FOUNDRY_API_VERSION,
+                timeout=settings.EMBEDDING_TIMEOUT_SECONDS,
+                max_retries=settings.EMBEDDING_MAX_RETRIES,
+            )
+        return self._embedding_client
     
     def _generate_embedding(self, text: str) -> List[float]:
         """
@@ -73,6 +88,14 @@ class EvidenceRetriever:
         Returns:
             List of evidence chunks with relevance scores and citations
         """
+        # Without Foundry credentials, embeddings would only ever fail/retry.
+        # Skip straight to keyword search to keep the offline path fast & quiet.
+        if not settings.ai_ready:
+            logger.info(
+                "AI credentials absent; using keyword search instead of embeddings."
+            )
+            return self._fallback_keyword_search(query, top_k, tier_filter)
+
         try:
             # Generate query embedding
             query_embedding = self._generate_embedding(query)
@@ -195,7 +218,10 @@ class EvidenceRetriever:
             return chunks
             
         except Exception as e:
-            logger.error(f"Fallback keyword search failed: {e}")
+            # No DB (e.g. placeholder creds in local/dev) is an expected,
+            # non-fatal state — log softly and return an empty corpus so the
+            # pipeline grounds via the [UNVERIFIED] flag instead of crashing.
+            logger.info("Keyword search unavailable, continuing without evidence: %s", e)
             return []
     
     def retrieve_by_ids(self, source_ids: List[str]) -> List[EvidenceChunk]:

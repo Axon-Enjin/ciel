@@ -58,7 +58,7 @@ Specialist build agents are defined in [sad-ciel.md](sad-ciel.md) and materializ
 | Vector | pgvector (in Postgres) | latest | 2026-06-25 | github.com/pgvector/pgvector |
 | AI service | Python | 3.12 | 2026-06-25 | python.org |
 | AI orchestration | FastAPI + LangGraph | latest | 2026-06-25 | langchain-ai.github.io/langgraph |
-| Model/agent/RAG | **Microsoft Foundry** (formerly Azure AI Foundry) — Foundry Agent Service + Foundry IQ; Claude primary | current | 2026-06-25 | https://learn.microsoft.com/en-us/azure/foundry/agents/overview |
+| Model/agent/RAG | **Microsoft Foundry** (formerly Azure AI Foundry) — Foundry Agent Service + Foundry IQ; **GPT-only** runtime (tenant exposes only GPT; cr-002) | current | 2026-06-26 | https://learn.microsoft.com/en-us/azure/foundry/agents/overview |
 
 ### Deprecations & convention changes — DO NOT use the stale form
 
@@ -141,7 +141,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 ```
 *Why this shape:* DSD tokens live in CSS (Tailwind v4 CSS-first) — no `tailwind.config.js`. This is the DSD §2 palette; do not substitute slop defaults (no Inter, no indigo→violet).
 
-### Grounded AI node (LangGraph → Foundry, Claude) · *verified 2026-06-25 against LangGraph + Foundry Agent Service*
+### Grounded AI node (LangGraph → Foundry; GPT-only) · *verified 2026-06-25 against LangGraph + Foundry Agent Service*
 
 ```python
 # ai_service/graph/toc_draft.py  (Python 3.12)

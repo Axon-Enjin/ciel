@@ -46,7 +46,7 @@ graph TD
       GRANT[Grant drafting]
       MANDE[M&E signal engine]
     end
-    Foundry[(Microsoft Foundry - Agent Service + Foundry IQ; Claude primary)]
+    Foundry[(Microsoft Foundry - Agent Service + Foundry IQ; GPT-only)]
     DB[(Postgres + pgvector - Supabase)]
     OBJ[(Object Storage - field photos)]
     Web --> RH
@@ -67,9 +67,9 @@ graph TD
 | Client | Next.js 16.2.9, React 19.2, Tailwind v4, PWA (service worker) | Product UI, ToC Studio canvas, offline field capture, streaming AI views |
 | API / Gateway | Next.js Route Handlers + Server Actions; SMS webhook handler | Auth, CRUD, file uploads, SMS ingest, proxy to AI service |
 | Service / Compute | Python 3.12, FastAPI, LangGraph | ToC generation graph, grant drafting, M&E signal computation, RAG orchestration |
-| AI control plane | **Microsoft Foundry** (Foundry Agent Service on Responses API; Foundry IQ managed retrieval) | Model hosting (Claude primary, GPT fallback), agent runtime, RAG over evidence corpus |
+| AI control plane | **Microsoft Foundry** (Foundry Agent Service on Responses API; Foundry IQ managed retrieval) | Model hosting (**GPT-only** — GPT frontier for generation + critique, GPT-mini for cheap parse), agent runtime, RAG over evidence corpus |
 | Data | PostgreSQL + pgvector (Supabase), Object Storage | App data, embeddings, audit log, field media |
-| Infrastructure | Vercel (Next.js) + Azure Container Apps (Python service, co-located with Foundry) | Hosting, scaling, secrets |
+| Infrastructure | Vercel (Next.js) + Azure App Service (Python service, non-containerized — Linux/Python runtime, co-located with Foundry) | Hosting, scaling, secrets |
 
 ---
 
@@ -153,15 +153,31 @@ graph TD
 | `chunk` | TEXT | No | — | — | retrieved unit |
 | `embedding` | VECTOR(1536) | Yes | — | ivfflat idx | pgvector |
 
+**Table: `funders`** (donor/agency catalog for PRD-F2 matching)
+
+| Column | Type | Null? | Default | Key/Index | Constraint |
+|--------|------|-------|---------|-----------|------------|
+| `id` | UUID | No | gen_random_uuid() | PK | — |
+| `name` | TEXT | No | — | — | — |
+| `type` | TEXT | No | — | — | CHECK in ('foundation','csr','government','multilateral') |
+| `region` | TEXT | Yes | — | — | — |
+| `focus_areas` | TEXT[] | No | '{}' | — | — |
+| `kpis` | TEXT[] | No | '{}' | — | proposal aligns reporting to these |
+| `priorities` | JSONB | No | '{}' | — | voice + submission requirements |
+| `typical_grant_php_min/max` | NUMERIC | Yes | — | — | indicative range |
+
 **Table: `grant_proposals`**
 
 | Column | Type | Null? | Default | Key/Index | Constraint |
 |--------|------|-------|---------|-----------|------------|
 | `id` | UUID | No | gen_random_uuid() | PK | — |
 | `project_id` | UUID | No | — | FK → projects.id | ON DELETE CASCADE |
-| `funder_id` | UUID | Yes | — | FK → funders.id | — |
-| `sections` | JSONB | No | — | — | human-editable; AI never overwrites human edits |
+| `funder_id` | UUID | Yes | — | FK → funders.id | ON DELETE SET NULL |
+| `title` | TEXT | Yes | — | — | — |
+| `sections` | JSONB | No | — | — | per-section `{key,heading,content,source_ids,ai_generated,edited_by_human}`; AI never overwrites human edits |
 | `amount_php` | NUMERIC | Yes | — | — | feeds BRD-M5 |
+| `status` | TEXT | No | 'draft' | — | CHECK in ('draft','in_review','final') |
+| `updated_at` | TIMESTAMPTZ | No | now() | — | auto-touched by trigger |
 
 **Table: `field_entries`** (web / PWA / SMS ingestion)
 
@@ -202,6 +218,8 @@ graph TD
 **Caching strategy:** Redis — rate-limit counters (TTL 60s), SMS de-dupe keys (TTL 24h), generated-evidence cache (TTL 6h).
 **Data protection:** Row-Level Security so a user only sees their org's rows; PII (emails, field-subject data) treated as personal data under RA 10173 (CLR).
 
+**Onboarding bootstrap (functions & policies, [CR-003](cr-ciel-003.md)):** Creating the *first* organization is a chicken-and-egg under RLS (you can only add an admin membership if you are already an admin). It is resolved by a `SECURITY DEFINER` RPC **`public.create_organization(name, org_type, mission, region)`** that inserts the `organizations` row **and** the creator's `admin` `memberships` row atomically, returning the new org id. `EXECUTE` is granted to `authenticated` only (revoked from `anon`); the function raises `not authenticated` when `auth.uid()` is NULL. A complementary scoped policy `"Creators can insert initial admin membership"` permits a first member to self-insert exactly one `admin` row for an org that has no members yet.
+
 ---
 
 ## 4. API Design & External Integrations
@@ -212,10 +230,13 @@ graph TD
 
 | Method | Path | Purpose |
 |--------|------|---------|
+| POST | `/api/onboarding` | Create workspace: org + creator `admin` membership (atomic RPC `create_organization`, PRD-F4) |
 | POST | `/api/needs` | Create a need / project (PRD-F1) |
 | POST | `/api/toc/generate` | Proxy to AI service ToC graph (streamed) |
 | POST | `/api/toc/:id/lock` | Lock a ToC (requires failure_prompts_ack) |
-| POST | `/api/grants/draft` | Generate funder-matched proposal (PRD-F2) |
+| POST | `/api/grants/generate` | Stream a funder-matched proposal from the locked ToC (SSE, PRD-F2) |
+| POST | `/api/grants` | Persist a generated proposal draft (role-gated by RLS) |
+| PATCH | `/api/grants/:id` | Save section edits / status / amount (human owns the pen) |
 | POST | `/api/field/entry` | Ingest web/PWA entry (idempotent via client_uuid) |
 | POST | `/api/sms/webhook` | Inbound SMS → parse → field_entry (PRD-F3) |
 | GET | `/api/projects/:id/signals` | Current scale/adapt/stop signals |
@@ -227,7 +248,7 @@ graph TD
 
 | Service | Purpose | Rate Limits / Fallback |
 |---------|---------|------------------------|
-| Microsoft Foundry (Claude/GPT, Foundry IQ) | Generation + managed RAG | 429 → backoff + queue; degrade to template + cached evidence; never silent-retry past a refusal |
+| Microsoft Foundry (GPT, Foundry IQ) | Generation + managed RAG | 429 → backoff + queue; degrade to template + cached evidence; never silent-retry past a refusal |
 | SMS/USSD gateway (PH provider) | Field ingestion from feature phones | delivery webhook + retry; de-dupe by message id; clarifying reply on parse fail |
 | Supabase (Auth/DB/Storage) | Identity, data, media | connection pool; RLS; daily backups |
 | PostHog (self-host option) | Analytics events (PRD §5.5) | non-blocking; drop on failure |
@@ -239,7 +260,7 @@ graph TD
 
 **Authentication:** Supabase Auth (email magic link + password); org invite links.
 **Session management:** JWT in httpOnly cookies, short-lived access + refresh; SSR-safe via `@supabase/ssr`.
-**Authorization model:** Postgres **Row-Level Security** keyed on `memberships`; role gates (admin/program/field/viewer). Field role can write `field_entries` but not read financials.
+**Authorization model:** Postgres **Row-Level Security** keyed on `memberships`; role gates (admin/program/field/viewer). Field role can write `field_entries` but not read financials. First-member onboarding uses a scoped bootstrap policy + a `SECURITY DEFINER` RPC (`create_organization`) to avoid the empty-membership chicken-and-egg ([CR-003](cr-ciel-003.md)).
 **Data protection:**
 - PII encrypted at rest (Supabase managed) + RLS; field-subject data minimized and consented (RA 10173 → CLR).
 - Secrets in platform env (Vercel / Azure), never committed; Foundry keys scoped to the AI service.
@@ -250,8 +271,8 @@ graph TD
 
 ## 6. Infrastructure, CI/CD & Deployment
 
-**Hosting:** Vercel (Next.js app + Route Handlers); Azure Container Apps (Python AI service, co-located with Foundry to cut latency + keep data in-region); Supabase (DB/Auth/Storage); Upstash Redis.
-**Environments:** `dev` (local + Supabase branch), `staging` (Vercel preview + staging Foundry deployment), `prod` (Vercel prod + ACA).
+**Hosting:** Vercel (Next.js app + Route Handlers); Azure App Service (Python AI service, **non-containerized** — Linux Python runtime, source/zip deploy via Oryx build, co-located with Foundry to cut latency + keep data in-region); Supabase (DB/Auth/Storage); Upstash Redis.
+**Environments:** `dev` (local + Supabase branch), `staging` (Vercel preview + staging Foundry deployment), `prod` (Vercel prod + Azure App Service).
 **CI/CD:** GitHub Actions — lint → type-check → test (incl. AI eval gate from QAD) → deploy. Preview on PR; prod on tagged release. Feature flags gate Modules 2–3.
 **Backup & DR:**
 - Backups: Supabase automated daily snapshots, 30-day retention; object storage versioned.
@@ -287,11 +308,13 @@ graph TD
 
 | Agent / Task | Model | Reason |
 |-------------|-------|--------|
-| ToC interactive generation | Claude Sonnet (via Foundry) | strong grounded reasoning at interactive cost |
-| "Intelligent failure" adversarial critique | Claude Opus (via Foundry) | hardest reasoning; runs once per ToC, rate-limited |
-| Grant section drafting | Claude Sonnet | structured long-form with citations |
-| M&E signal rationale | Claude Sonnet | concise grounded interpretation |
-| Cheap classify/parse (SMS intent) | Claude Haiku or GPT-mini | low-cost, fast |
+| ToC interactive generation | GPT (frontier, via Foundry) | strong grounded reasoning at interactive cost |
+| "Intelligent failure" adversarial critique | GPT (frontier, via Foundry) | separate pass with an adversarial system prompt + lower temperature; runs once per ToC, rate-limited |
+| Grant section drafting | GPT (frontier) | structured long-form with citations |
+| M&E signal rationale | GPT (frontier) | concise grounded interpretation |
+| Cheap classify/parse (SMS intent) | GPT-mini | low-cost, fast |
+
+> **Model note (cr-ciel-002):** Ciel runs **GPT-only** on Microsoft Foundry — the team's Foundry tenant exposes only GPT deployments. The adversarial critique is a separate GPT pass (distinct privileged prompt + lower temperature), not a different model family; the QAD grounding/safety evals are the real gate. Exact deployment names are perishable — pin them at build time per BUILD §3.
 
 **Context architecture:** system prompt (privileged, cached prefix) + injected org/project context + retrieved evidence chunks. Max context ~50k tokens/request. Prompt-prefix caching on the static system instructions (high hit rate expected).
 

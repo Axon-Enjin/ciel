@@ -32,8 +32,8 @@ A **LangGraph state machine** in the Python AI service, grounded by retrieval ov
 flowchart TD
     Intake[Need + org context] --> Interrogate[Root-cause interrogation: clarifying Qs]
     Interrogate --> Retrieve[Retrieve evidence - Foundry IQ]
-    Retrieve --> Draft[Draft ToC graph - Claude Sonnet, structured JSON]
-    Draft --> Critique[Intelligent-failure critique - Claude Opus]
+    Retrieve --> Draft[Draft ToC graph - GPT frontier, structured JSON]
+    Draft --> Critique[Intelligent-failure critique - GPT frontier, adversarial pass]
     Critique --> Present[Present ToC + failure prompts to user]
     Present --> Ack{User acknowledges failures?}
     Ack -->|No| Draft
@@ -102,7 +102,7 @@ ToC Studio consumes the SSE stream and renders the graph incrementally; each nod
 
 ## 5. AI / Agent Implementation Notes
 
-**Models:** Claude Sonnet (interrogate, draft) + Claude Opus (one adversarial critique per ToC), via Microsoft Foundry.
+**Models:** GPT (frontier) for interrogate + draft and for the one adversarial critique per ToC (a separate pass with an adversarial system prompt + lower temperature), via Microsoft Foundry (GPT-only tenant). See [cr-ciel-002.md](cr-ciel-002.md).
 **Prompt strategy:** cached privileged system prefix (ToC methodology + grounding rules + output schema) + injected org/need context + retrieved chunks. Structured output validated against a JSON schema (Pydantic) before persistence.
 **Tool calls:** `retrieve_evidence` (read-only), `write_toc_draft` (app-mediated draft only). No destructive tools.
 **LLM edge cases:**

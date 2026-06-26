@@ -110,7 +110,7 @@ PWA holds an outbox in IndexedDB; the service worker listens for `sync` events (
 
 ## 5. AI / Agent Implementation Notes
 
-**Model:** Claude Sonnet (rationale narration only) / Haiku or GPT-mini for SMS intent-parse fallback, via Foundry.
+**Model:** GPT (frontier) for rationale narration only / GPT-mini for SMS intent-parse fallback, via Foundry.
 **Prompt strategy:** the engine passes the breached assumption + the indicator series; the model returns a short, grounded explanation citing the assumption and trend — it never outputs the signal type.
 **Tool calls:** `compute_signal` is deterministic Python (read + recommend); the LLM has no write/act tool here.
 **LLM edge cases:** unparseable SMS → deterministic clarifying reply (no model needed); model unavailable → signal still fires with a templated rationale ("Attendance below threshold for 3 periods"), AI narration filled in later.
