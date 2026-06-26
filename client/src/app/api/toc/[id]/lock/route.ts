@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAiServiceUrl } from "@/lib/ai-service";
+import { aiServiceJsonHeaders, getAiServiceUrl } from "@/lib/ai-service";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 
 export async function POST(
@@ -49,7 +49,7 @@ export async function POST(
 
   const upstream = await fetch(`${getAiServiceUrl()}/toc/${tocId}/lock`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: aiServiceJsonHeaders(),
     body: JSON.stringify({
       toc_id: tocId,
       acknowledged_critique_ids: acknowledgedCritiqueIds,
