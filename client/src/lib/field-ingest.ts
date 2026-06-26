@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { User } from "@supabase/supabase-js";
-import { getAiServiceUrl } from "@/lib/ai-service";
+import { aiServiceJsonHeaders, getAiServiceUrl } from "@/lib/ai-service";
 import { createClient } from "@/lib/supabase/server";
 
 export const fieldValueSchema = z.object({
@@ -148,7 +148,7 @@ export async function ingestFieldEntry(
   try {
     const upstream = await fetch(`${getAiServiceUrl()}/mande/evaluate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: aiServiceJsonHeaders(),
       body: JSON.stringify({ project_id: input.project_id }),
     });
     if (upstream.ok) {
