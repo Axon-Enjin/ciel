@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { RegisterFieldServiceWorker } from "@/components/mande/register-field-sw";
 import { getCurrentUser, getUserOrganizations } from "@/lib/supabase/server";
 import {
   membershipsToShellOrgs,
@@ -29,6 +30,7 @@ export default async function WorkspaceLayout({
         orgs={orgs}
         activeOrgId={activeOrgId}
       >
+        <RegisterFieldServiceWorker />
         {children}
       </DashboardShell>
     </Suspense>

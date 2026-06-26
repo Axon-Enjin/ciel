@@ -1,0 +1,17 @@
+{
+  "name": "Ciel Field Capture",
+  "short_name": "Ciel Capture",
+  "description": "Offline-first field capture for Ciel projects.",
+  "start_url": "/field-capture",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f5f8",
+  "theme_color": "#1f3f95",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

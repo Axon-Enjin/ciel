@@ -30,6 +30,7 @@ const description =
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  manifest: "/manifest.json",
   title: {
     default: title,
     template: "%s · Ciel",

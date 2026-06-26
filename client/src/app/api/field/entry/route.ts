@@ -1,44 +1,15 @@
 import { NextResponse } from "next/server";
-import {
-  fieldIngestSchema,
-  ingestFieldEntry,
-  type FieldIngestInput,
-} from "@/lib/field-ingest";
+import { fieldIngestSchema, ingestFieldEntry } from "@/lib/field-ingest";
 import { getCurrentUser } from "@/lib/supabase/server";
 
-/** Record a web field indicator and trigger M&E signal evaluation. */
-export async function POST(
-  request: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id: projectId } = await ctx.params;
   const body = await request.json().catch(() => null);
-  const indicator = String(body?.indicator ?? "").trim();
-  const value = Number(body?.value);
-  const observedAt = body?.observed_at
-    ? String(body.observed_at)
-    : new Date().toISOString();
-
-  if (!indicator || Number.isNaN(value)) {
-    return NextResponse.json(
-      { error: "indicator and numeric value are required" },
-      { status: 400 },
-    );
-  }
-
-  const payload: FieldIngestInput = {
-    client_uuid: crypto.randomUUID(),
-    project_id: projectId,
-    source: "web",
-    values: [{ indicator, value, observed_at: observedAt }],
-  };
-
-  const parsed = fieldIngestSchema.safeParse(payload);
+  const parsed = fieldIngestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid field entry payload" },
@@ -58,7 +29,7 @@ export async function POST(
     );
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to record entry";
+      error instanceof Error ? error.message : "Failed to ingest field entry";
     const status =
       message === "Project not found"
         ? 404

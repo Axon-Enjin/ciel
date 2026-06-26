@@ -110,6 +110,12 @@ export default async function ProjectDashboardPage({
             ToC Studio
           </Link>
         </Button>
+        <Button variant="secondary" asChild>
+          <Link href={`/projects/${projectId}/capture`}>
+            <IconArrowUpRight size={16} />
+            Field Capture
+          </Link>
+        </Button>
         {lockedToc && (
           <Button variant="secondary" asChild>
             <Link href={`/projects/${projectId}/grants`}>

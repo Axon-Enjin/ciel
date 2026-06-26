@@ -67,6 +67,9 @@ function isNavActive(label: string, pathname: string, base: string): boolean {
   if (label === "ToC Studio") {
     return pathname.startsWith("/projects/new") || pathname.includes("/toc");
   }
+  if (label === "Field Capture") {
+    return pathname.startsWith("/field-capture") || pathname.includes("/capture");
+  }
   return base === pathname;
 }
 
@@ -75,7 +78,7 @@ function useNav(activeOrgId: string): NavItem[] {
     { label: "Overview", href: "/dashboard", icon: <IconHorizon size={19} /> },
     { label: "ToC Studio", href: `/projects/new?org=${activeOrgId}`, icon: <IconNodes size={19} /> },
     { label: "Signals", href: "/dashboard#signals", icon: <IconPulse size={19} /> },
-    { label: "Field Capture", href: "#", icon: <IconPin size={19} />, soon: true },
+    { label: "Field Capture", href: `/field-capture?org=${activeOrgId}`, icon: <IconPin size={19} /> },
     { label: "Reports", href: "#", icon: <IconReport size={19} />, soon: true },
     { label: "Settings", href: "#", icon: <IconGear size={19} />, soon: true },
   ];
@@ -180,6 +183,11 @@ export function DashboardShell({
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [orgMenu, setOrgMenu] = React.useState(false);
   const [userMenu, setUserMenu] = React.useState(false);
+  const [hydrated, setHydrated] = React.useState(false);
+
+  React.useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const activeOrg = orgs.find((o) => o.id === activeOrgId) ?? orgs[0];
   const initials = (activeOrg?.name ?? user.email).slice(0, 2).toUpperCase();
@@ -251,6 +259,20 @@ export function DashboardShell({
       </div>
     </div>
   );
+
+  if (!hydrated) {
+    return (
+      <ShellOrgContext.Provider value={{ activeOrgId, setActiveOrgId }}>
+        <div className="min-h-[100dvh] bg-[var(--color-bg)] text-[var(--color-text)]">
+          <div className="lg:pl-[248px]">
+            <main className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 sm:py-10 lg:py-12">
+              {children}
+            </main>
+          </div>
+        </div>
+      </ShellOrgContext.Provider>
+    );
+  }
 
   return (
     <ShellOrgContext.Provider value={{ activeOrgId, setActiveOrgId }}>
